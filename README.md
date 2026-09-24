@@ -35,4 +35,8 @@ This is a single-browser design prototype. Do not enter real candidate informati
 - Secure scorecard upload storage and a review screen for confirming notes and scores. Handwriting extraction can follow once real forms have been tested.
 - Retention settings and an audit trail for access, changes, approvals, and selection decisions.
 
-The frontend can be deployed to Railway as a React/Vite static site. Keep it private to prototype reviewers until server-side accounts and storage are in place. No Railway project or deployment is configured yet.
+## Railway preview
+
+Railway can build the site with `npm run build` and start it with `npm start`. The start script serves the compiled `dist/` directory on Railway's `PORT`. No environment variables or database are needed for this browser-only prototype.
+
+The preview has no authentication. Anyone with a generated public domain can load the app, so use sample data only. A production release needs company accounts and server-side access controls before real candidate information is entered.
