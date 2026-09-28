@@ -5,6 +5,7 @@ import { recommendStep } from './recommendations'
 import { matchRoleCompetencies } from './roleMatching'
 import { readJobDescription } from './jobDescriptionFile'
 import ReferenceGuide from './ReferenceGuide'
+import { reportError } from './errorReporting'
 
 type Value = { id: string; name: string; behavior: string; concern: string }
 type Stage = { id: string; name: string; owner: string; method: string; purpose: string; advance: string; template?: string }
@@ -67,6 +68,7 @@ function App() {
   const [bankQuery, setBankQuery] = useState('')
   const [uploadName, setUploadName] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [aiBusy, setAiBusy] = useState(false)
   useEffect(() => { localStorage.setItem('efactor-draft', JSON.stringify(d)) }, [d])
   const change = (patch: Partial<Draft>) => setD(old => ({ ...old, ...patch, items: patch.items ?? [], referenceItems: patch.referenceItems ?? [], approved: false }))
   const editValue = (id: string, patch: Partial<Value>) => change({ values: d.values.map(v => v.id === id ? { ...v, ...patch } : v) })
@@ -83,6 +85,7 @@ function App() {
       setUploadName(file.name)
       setMessage(`Text from ${file.name} is ready below. Review it before suggesting competencies.`)
     } catch (error) {
+      reportError('job_description_import', error)
       setMessage(error instanceof Error ? error.message : 'Could not read this file. Paste the job description instead.')
     } finally {
       setUploading(false)
@@ -111,6 +114,32 @@ function App() {
     if (d.competencies.some(c => c.bankId === entry.id || c.name.trim().toLowerCase() === entry.name.toLowerCase())) return
     change({ competencies: [...d.competencies, { id: uid(), bankId: entry.id, name: entry.name, evidence: entry.evidence, source: 'Competency bank', stageId: '', included: true }] })
     setMessage(`${entry.name} added. Edit the behavior and assign it to a hiring step.`)
+  }
+  const aiDraft = async (mode: 'suggest' | 'tailor') => {
+    if (!d.role.trim() || !d.description.trim()) { setMessage('Add a role title and job description first.'); return }
+    const selected = d.competencies.filter(c => c.included)
+    if (mode === 'tailor' && (!selected.length || selected.some(c => !c.stageId))) { setMessage('Include competencies and assign each one to a hiring step first.'); return }
+    setAiBusy(true)
+    setMessage('Drafting with OpenAI. Review every suggestion before using it.')
+    try {
+      const response = await fetch('/api/ai/draft', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode, role: d.role, description: d.description, culture: d.culture, outcomes: d.outcomes, requirements: d.requirements, challenges: d.challenges, values: d.values, stages: d.stages.filter(s => !isReferenceStage(s)), competencies: mode === 'tailor' ? selected : [] }) })
+      const result = await response.json()
+      if (!response.ok) { setMessage(result.error || 'AI drafting could not finish.'); return }
+      if (mode === 'suggest') {
+        const seen = new Set(d.competencies.map(c => c.name.trim().toLowerCase()))
+        const additions: Competency[] = (result.suggestions as {name:string;evidence:string;reason:string;stageId:string}[]).filter(s => { const key=s.name.trim().toLowerCase(); if (seen.has(key)) return false; seen.add(key); return true }).map(s => ({ id: uid(), name: s.name, evidence: s.evidence, matchText: s.reason, source: 'AI suggestion', stageId: s.stageId, included: true }))
+        change({ competencies: [...d.competencies, ...additions], referenceCompetencyIds: d.referenceCompetencyIds })
+        setMessage(`${additions.length} AI suggestions added. Check each behavior, reason, and hiring step.`)
+      } else {
+        const prior = new Map(d.items.map(item => [item.competencyId, item]))
+        const items: Item[] = (result.items as Item[]).map(item => ({ ...item, id: prior.get(item.competencyId)?.id || uid() }))
+        change({ items, referenceItems: d.referenceItems })
+        setMessage('AI questions and scoring anchors drafted. Edit them before approving the kit.')
+      }
+    } catch (error) {
+      reportError('ai_draft', error)
+      setMessage('AI drafting could not connect. Your current draft is safe.')
+    } finally { setAiBusy(false) }
   }
   const makeKit = () => {
     const selected = d.competencies.filter(c => c.included)
@@ -195,9 +224,11 @@ function App() {
       <p className="lead">Compare the job description with the competency bank, then review the matched text. You can also choose from the bank or add your own. Check each behavior and suggested hiring step before assigning it.</p>
       <div className="actions">
         <button className="secondary" onClick={propose}>Suggest from role and values</button>
+        <button className="secondary" disabled={aiBusy} onClick={() => void aiDraft('suggest')}>{aiBusy ? 'Drafting…' : 'Suggest with AI'}</button>
         <button className="secondary" aria-expanded={bankOpen} aria-controls="competency-bank" onClick={() => setBankOpen(open => !open)}>{bankOpen ? 'Hide competency bank' : 'Browse competency bank'}</button>
         <button className="link" onClick={() => change({ competencies:[...d.competencies,{id:uid(),name:'',source:'Added by company',evidence:'',stageId:'',included:true}] })}>+ Add your own</button>
       </div>
+      <p className="reference-tip">AI drafting sends the role description, company values, and hiring steps to OpenAI when you click. Use sample company details in this prototype. <a href="/admin" target="_blank" rel="noreferrer">Admin sign in</a> is required.</p>
       {bankOpen && <section className="bank-panel" id="competency-bank" aria-label="Competency bank">
         <div className="section-head"><div><h2>Competency bank</h2><p>Choose behaviors that matter for this role. Each one is a starting point you can edit.</p></div></div>
         <label>Search competencies<input type="search" value={bankQuery} placeholder="Try judgment, documentation, or coaching" onChange={e => setBankQuery(e.target.value)}/></label>
@@ -220,7 +251,7 @@ function App() {
           <div className="card-head"><label className="check"><input type="checkbox" checked={c.included} onChange={e=>change({competencies:d.competencies.map(x=>x.id===c.id?{...x,included:e.target.checked}:x),referenceCompetencyIds:e.target.checked?d.referenceCompetencyIds:d.referenceCompetencyIds.filter(id=>id!==c.id)})}/> Include</label><span className="tag">{c.source}</span><button className="link" onClick={() => change({competencies:d.competencies.filter(x=>x.id!==c.id),referenceCompetencyIds:d.referenceCompetencyIds.filter(id=>id!==c.id)})}>Remove</button></div>
           <label>Competency<input value={c.name} onChange={e=>editComp(c.id,{name:e.target.value})}/></label>
           <label>What would demonstrate it?<textarea value={c.evidence} onChange={e=>editComp(c.id,{evidence:e.target.value})}/></label>
-          {c.matchText && <div className="role-match"><strong>Why this appeared</strong><p>Matched wording: {c.matchCues?.join(', ')}</p><blockquote>{c.matchText}</blockquote></div>}
+          {c.matchText && <div className="role-match"><strong>Why this appeared</strong>{c.matchCues?.length ? <p>Matched wording: {c.matchCues.join(', ')}</p> : null}<blockquote>{c.matchText}</blockquote></div>}
           {suggested && <div className="step-suggestion"><div><strong>Suggested step: {suggested.name}</strong><p>{suggested.reason} Check that this step can gather comparable evidence for every candidate.</p></div><button className="secondary" disabled={c.stageId===suggested.stageId} onClick={()=>editComp(c.id,{stageId:suggested.stageId})}>{c.stageId===suggested.stageId?'Assigned':'Use suggestion'}</button></div>}
           {!suggested && c.name.trim() && d.stages.length>0 && <p className="step-unmatched">No clear step match yet. Choose a step where you can ask the same question or observe the same task for each candidate.</p>}
           <label>Assess at this step<select value={c.stageId} onChange={e=>editComp(c.id,{stageId:e.target.value})}><option value="">Choose a step</option>{d.stages.filter(s => !isReferenceStage(s)).map(s=><option key={s.id} value={s.id}>{s.name || 'Untitled step'}</option>)}</select></label>
@@ -229,7 +260,7 @@ function App() {
       {d.stages.some(isReferenceStage) && <section className="reference-selection"><h2>Reference check</h2><p>Which two or three job-related behaviors should a reference help verify? Ask the same core questions for each candidate. The reference check adds evidence; it does not replace an interview step.</p>{d.competencies.filter(c=>c.included && c.name.trim()).map(c=><label className="check" key={c.id}><input type="checkbox" checked={d.referenceCompetencyIds.includes(c.id)} disabled={!d.referenceCompetencyIds.includes(c.id) && d.referenceCompetencyIds.length>=3} onChange={e=>change({referenceCompetencyIds:e.target.checked?[...d.referenceCompetencyIds,c.id]:d.referenceCompetencyIds.filter(id=>id!==c.id)})}/>{c.name}</label>)}{!d.competencies.some(c=>c.included && c.name.trim()) && <p>Include competencies above to select them here.</p>}<small>{d.referenceCompetencyIds.filter(id=>d.competencies.some(c=>c.id===id && c.included)).length} of 3 selected</small></section>}
       {d.competencies.some(c=>c.source==='Company value') && <div className="hint">Review overlap between a role competency and a value. Count the same behavior twice only if you intend to.</div>}
     </>}
-    {page === 5 && <><h1>Review the <em>interview kit.</em></h1><p className="lead">Edit every question and scoring anchor before managers use it. Changes return the kit to draft. Names, evidence notes, and ratings entered on this screen are for printing; they are not saved.</p><div className="actions no-print"><button className="secondary" onClick={makeKit}>Generate or refresh draft</button><button className="secondary" disabled={!d.items.length} onClick={()=>window.print()}>Print / save PDF</button><button className="primary" disabled={!d.items.length} onClick={()=>{setD(old=>({...old,approved:true}));setMessage('Kit approved in this browser prototype.')}}>Approve kit</button><span className={'badge '+(d.approved?'approved':'')}>{d.approved?'Approved':'Draft'}</span></div>{!d.items.length && <div className="empty">Assign competencies to steps, then generate the kit.</div>}{!!d.items.length && <section className="guide"><div className="eyebrow">MANAGER GUIDE</div><h2>Use the kit consistently</h2><p>Ask the approved core questions. Use follow-ups to clarify what the candidate personally did. Record examples beside each score, then score before discussing candidates with others. Mark missing evidence instead of guessing.</p><p><strong>Scale:</strong> 1 = below the described behavior · 2 = between 1 and 3 · 3 = meets it · 4 = between 3 and 5 · 5 = exceeds it.</p></section>}{!!d.items.length && d.stages.map((s,i)=>{const items=d.items.filter(q=>d.competencies.find(c=>c.id===q.competencyId)?.stageId===s.id);return isReferenceStage(s)?<ReferenceGuide key={s.id} stage={s} index={i} items={d.referenceItems} competencies={d.competencies} onEdit={editReferenceItem}/>:items.length?<section className="kit-stage" key={s.id}><div className="stage-title"><div className="eyebrow">STEP {String(i+1).padStart(2,'0')}</div><h2>{s.name}</h2><p>{s.owner} · {s.method}</p><p>{s.purpose}</p></div>{items.map(q=>{const c=d.competencies.find(x=>x.id===q.competencyId)!;return <article className="card" key={q.id}><div className="card-head"><span className="tag">{c.name}</span><small>{c.source}</small></div><label>Question or task<textarea value={q.question} onChange={e=>editItem(q.id,{question:e.target.value})}/><span className="print-field">{q.question}</span></label><label>Follow-up prompts<input value={q.probe} onChange={e=>editItem(q.id,{probe:e.target.value})}/><span className="print-field">{q.probe}</span></label><div className="anchors">{([['1','low'],['3','meets'],['5','high']] as const).map(([n,key])=><label key={n}><b>{n}</b><textarea value={q[key]} onChange={e=>editItem(q.id,{[key]:e.target.value})}/><span className="print-field">{q[key]}</span></label>)}</div><div className="score"><label>Evidence notes<textarea value={notes[q.id] || ""} onChange={e=>setNotes(old=>({...old,[q.id]:e.target.value}))} placeholder="What did the candidate say or do?"/><span className="print-field print-notes">{notes[q.id] || " "}</span></label><label>Score<select value={scores[q.id] || ""} onChange={e=>setScores(old=>({...old,[q.id]:e.target.value}))}><option value="">Not scored</option>{[1,2,3,4,5].map(n=><option key={n}>{n}</option>)}</select><span className="print-field">{scores[q.id] || "Not scored"}</span></label></div></article>})}<p className="decision"><strong>Decision point:</strong> {s.advance || 'Not yet defined.'}</p></section>:null})}</>}
+    {page === 5 && <><h1>Review the <em>interview kit.</em></h1><p className="lead">Edit every question and scoring anchor before managers use it. Changes return the kit to draft. Names, evidence notes, and ratings entered on this screen are for printing; they are not saved.</p><div className="actions no-print"><button className="secondary" onClick={makeKit}>Generate or refresh draft</button><button className="secondary" disabled={aiBusy} onClick={() => void aiDraft('tailor')}>{aiBusy ? 'Drafting…' : 'Tailor questions with AI'}</button><button className="secondary" disabled={!d.items.length} onClick={()=>window.print()}>Print / save PDF</button><button className="primary" disabled={!d.items.length} onClick={()=>{setD(old=>({...old,approved:true}));setMessage('Kit approved in this browser prototype.')}}>Approve kit</button><span className={'badge '+(d.approved?'approved':'')}>{d.approved?'Approved':'Draft'}</span></div>{!d.items.length && <div className="empty">Assign competencies to steps, then generate the kit.</div>}{!!d.items.length && <section className="guide"><div className="eyebrow">MANAGER GUIDE</div><h2>Use the kit consistently</h2><p>Ask the approved core questions. Use follow-ups to clarify what the candidate personally did. Record examples beside each score, then score before discussing candidates with others. Mark missing evidence instead of guessing.</p><p><strong>Scale:</strong> 1 = below the described behavior · 2 = between 1 and 3 · 3 = meets it · 4 = between 3 and 5 · 5 = exceeds it.</p></section>}{!!d.items.length && d.stages.map((s,i)=>{const items=d.items.filter(q=>d.competencies.find(c=>c.id===q.competencyId)?.stageId===s.id);return isReferenceStage(s)?<ReferenceGuide key={s.id} stage={s} index={i} items={d.referenceItems} competencies={d.competencies} onEdit={editReferenceItem}/>:items.length?<section className="kit-stage" key={s.id}><div className="stage-title"><div className="eyebrow">STEP {String(i+1).padStart(2,'0')}</div><h2>{s.name}</h2><p>{s.owner} · {s.method}</p><p>{s.purpose}</p></div>{items.map(q=>{const c=d.competencies.find(x=>x.id===q.competencyId)!;return <article className="card" key={q.id}><div className="card-head"><span className="tag">{c.name}</span><small>{c.source}</small></div><label>Question or task<textarea value={q.question} onChange={e=>editItem(q.id,{question:e.target.value})}/><span className="print-field">{q.question}</span></label><label>Follow-up prompts<input value={q.probe} onChange={e=>editItem(q.id,{probe:e.target.value})}/><span className="print-field">{q.probe}</span></label><div className="anchors">{([['1','low'],['3','meets'],['5','high']] as const).map(([n,key])=><label key={n}><b>{n}</b><textarea value={q[key]} onChange={e=>editItem(q.id,{[key]:e.target.value})}/><span className="print-field">{q[key]}</span></label>)}</div><div className="score"><label>Evidence notes<textarea value={notes[q.id] || ""} onChange={e=>setNotes(old=>({...old,[q.id]:e.target.value}))} placeholder="What did the candidate say or do?"/><span className="print-field print-notes">{notes[q.id] || " "}</span></label><label>Score<select value={scores[q.id] || ""} onChange={e=>setScores(old=>({...old,[q.id]:e.target.value}))}><option value="">Not scored</option>{[1,2,3,4,5].map(n=><option key={n}>{n}</option>)}</select><span className="print-field">{scores[q.id] || "Not scored"}</span></label></div></article>})}<p className="decision"><strong>Decision point:</strong> {s.advance || 'Not yet defined.'}</p></section>:null})}</>}
     {message && <div className="toast" role="status">{message}<button onClick={()=>setMessage('')}>×</button></div>}{page>0&&page<5&&<div className="bottom"><button className="link" onClick={()=>setPage(page-1)}>← Back</button><button className="primary" onClick={()=>setPage(page+1)}>Continue →</button></div>}
   </main></div></div>
 }
