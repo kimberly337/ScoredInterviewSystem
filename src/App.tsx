@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import './App.css'
+import { competencyBank } from './competencyBank'
 
 type Value = { id: string; name: string; behavior: string; concern: string }
 type Stage = { id: string; name: string; owner: string; method: string; purpose: string; advance: string }
-type Competency = { id: string; name: string; source: string; evidence: string; stageId: string; included: boolean }
+type Competency = { id: string; name: string; source: string; evidence: string; stageId: string; included: boolean; bankId?: string }
 type Item = { id: string; competencyId: string; question: string; probe: string; low: string; meets: string; high: string }
 type Draft = { company: string; culture: string; values: Value[]; role: string; description: string; outcomes: string; requirements: string; teachable: string; challenges: string; stages: Stage[]; competencies: Competency[]; items: Item[]; approved: boolean }
 const uid = () => crypto.randomUUID()
@@ -24,6 +25,8 @@ function App() {
   const [message, setMessage] = useState('')
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [scores, setScores] = useState<Record<string, string>>({})
+  const [bankOpen, setBankOpen] = useState(false)
+  const [bankQuery, setBankQuery] = useState('')
   useEffect(() => { localStorage.setItem('efactor-draft', JSON.stringify(d)) }, [d])
   const change = (patch: Partial<Draft>) => setD(old => ({ ...old, ...patch, items: patch.items ?? [], approved: false }))
   const editValue = (id: string, patch: Partial<Value>) => change({ values: d.values.map(v => v.id === id ? { ...v, ...patch } : v) })
@@ -32,10 +35,23 @@ function App() {
   const editItem = (id: string, patch: Partial<Item>) => change({ items: d.items.map(q => q.id === id ? { ...q, ...patch } : q) })
   const propose = () => {
     const source = [d.description, d.outcomes, d.requirements, d.challenges].join(' ')
+    const kept = d.competencies.filter(c => c.source !== 'Role description' && c.source !== 'Company value')
     const role = patterns.filter(([re]) => re.test(source)).map(([, name, evidence]) => ({ id: uid(), name, evidence, source: 'Role description', stageId: '', included: true }))
     const values = d.values.filter(v => v.name.trim()).map(v => ({ id: uid(), name: v.name, evidence: v.behavior, source: 'Company value', stageId: '', included: true }))
-    change({ competencies: [...role, ...values], items: [] })
+    const seen = new Set(kept.map(c => c.name.trim().toLowerCase()))
+    const suggestions = [...role, ...values].filter(c => {
+      const key = c.name.trim().toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    change({ competencies: [...kept, ...suggestions], items: [] })
     setMessage('Suggestions are ready. Review their evidence and assign each to a hiring step.')
+  }
+  const addFromBank = (entry: (typeof competencyBank)[number]) => {
+    if (d.competencies.some(c => c.bankId === entry.id || c.name.trim().toLowerCase() === entry.name.toLowerCase())) return
+    change({ competencies: [...d.competencies, { id: uid(), bankId: entry.id, name: entry.name, evidence: entry.evidence, source: 'Competency bank', stageId: '', included: true }] })
+    setMessage(`${entry.name} added. Edit the behavior and assign it to a hiring step.`)
   }
   const makeKit = () => {
     const selected = d.competencies.filter(c => c.included)
@@ -61,7 +77,33 @@ function App() {
     {page === 1 && <><h1>Start with the <em>company.</em></h1><p className="lead">Describe how people work here. Give examples that a manager could observe.</p><section className="card">{field('Company name','company')}{field('What is the work environment like?','culture',true,'Describe the team and how people work together.')}</section><div className="section-head"><div><h2>Values in action</h2><p>Give each value a behavior and an example of concern.</p></div><button className="secondary" onClick={() => change({ values: [...d.values, { id: uid(), name: '', behavior: '', concern: '' }] })}>+ Add value</button></div>{d.values.map((v,i) => <section className="card" key={v.id}><div className="card-head"><h3>Value {i+1}</h3><button className="link" onClick={() => change({ values: d.values.filter(x => x.id !== v.id) })}>Remove</button></div><label>Value name<input value={v.name} onChange={e => editValue(v.id,{name:e.target.value})}/></label><label>What would a manager see someone do?<textarea value={v.behavior} onChange={e => editValue(v.id,{behavior:e.target.value})}/></label><label>What behavior would concern you?<textarea value={v.concern} onChange={e => editValue(v.id,{concern:e.target.value})}/></label></section>)}</>}
     {page === 2 && <><h1>Define the <em>role.</em></h1><p className="lead">Paste the job description, then add what success and challenge look like in practice.</p><section className="card">{field('Role title','role',false,'e.g. Screen Printing Specialist')}{field('Job description','description',true,'Paste the role duties and requirements here.')}<div className="columns">{field('What should this person do well in the first few months?','outcomes',true)}{field('What challenges arise in this work?','challenges',true)}{field('What must they bring on day one?','requirements',true)}{field('What can you teach?','teachable',true)}</div></section></>}
     {page === 3 && <><h1>Your process, <em>your way.</em></h1><p className="lead">Add the hiring steps your company uses. Each step can assess different evidence.</p><div className="section-head"><div><h2>Hiring steps</h2><p>Drag is not needed. Use the arrows to set the order.</p></div><button className="secondary" onClick={() => change({ stages: [...d.stages,{id:uid(),name:'',owner:'',method:'',purpose:'',advance:''}] })}>+ Add step</button></div>{!d.stages.length && <div className="empty">Add the first point where you assess a candidate.</div>}{d.stages.map((s,i) => <section className="card" key={s.id}><div className="card-head"><h3>{i+1}. {s.name || 'New hiring step'}</h3><div><button className="link" disabled={!i} onClick={() => { const a=[...d.stages]; [a[i-1],a[i]]=[a[i],a[i-1]]; change({stages:a}) }}>↑</button><button className="link" disabled={i===d.stages.length-1} onClick={() => { const a=[...d.stages]; [a[i+1],a[i]]=[a[i],a[i+1]]; change({stages:a}) }}>↓</button><button className="link" onClick={() => change({ stages:d.stages.filter(x=>x.id!==s.id), competencies:d.competencies.map(c=>c.stageId===s.id?{...c,stageId:''}:c) })}>Remove</button></div></div><div className="columns"><label>Step name<input value={s.name} onChange={e=>editStage(s.id,{name:e.target.value})}/></label><label>Who conducts it?<input value={s.owner} onChange={e=>editStage(s.id,{owner:e.target.value})}/></label><label>How does it work?<input value={s.method} placeholder="Conversation, tour, practical task..." onChange={e=>editStage(s.id,{method:e.target.value})}/></label><label>What must you learn?<textarea value={s.purpose} onChange={e=>editStage(s.id,{purpose:e.target.value})}/></label></div><label>What is needed to move forward?<textarea value={s.advance} onChange={e=>editStage(s.id,{advance:e.target.value})}/></label></section>)}</>}
-    {page === 4 && <><h1>Choose what to <em>assess.</em></h1><p className="lead">Suggestions come from the role and values. Review the source, describe observable evidence, and assign each competency to a step.</p><div className="actions"><button className="secondary" onClick={propose}>Suggest from role and values</button><button className="link" onClick={() => change({ competencies:[...d.competencies,{id:uid(),name:'',source:'Added by company',evidence:'',stageId:'',included:true}] })}>+ Add your own</button></div>{!d.competencies.length && <div className="empty">No competencies yet. Generate suggestions, then edit them to match the role.</div>}{d.competencies.map(c => <section className="card competency" key={c.id}><div className="card-head"><label className="check"><input type="checkbox" checked={c.included} onChange={e=>editComp(c.id,{included:e.target.checked})}/> Include</label><span className="tag">{c.source}</span><button className="link" onClick={() => change({competencies:d.competencies.filter(x=>x.id!==c.id)})}>Remove</button></div><label>Competency<input value={c.name} onChange={e=>editComp(c.id,{name:e.target.value})}/></label><label>What would demonstrate it?<textarea value={c.evidence} onChange={e=>editComp(c.id,{evidence:e.target.value})}/></label><label>Assess at this step<select value={c.stageId} onChange={e=>editComp(c.id,{stageId:e.target.value})}><option value="">Choose a step</option>{d.stages.map(s=><option key={s.id} value={s.id}>{s.name || 'Untitled step'}</option>)}</select></label></section>)}{d.competencies.some(c=>c.source==='Company value') && <div className="hint">Review overlap between a role competency and a value. Count the same behavior twice only if you intend to.</div>}</>}
+    {page === 4 && <>
+      <h1>Choose what to <em>assess.</em></h1>
+      <p className="lead">Suggestions come from the role and values. You can also choose from the bank or add your own. Review every behavior and assign it to a hiring step.</p>
+      <div className="actions">
+        <button className="secondary" onClick={propose}>Suggest from role and values</button>
+        <button className="secondary" aria-expanded={bankOpen} aria-controls="competency-bank" onClick={() => setBankOpen(open => !open)}>{bankOpen ? 'Hide competency bank' : 'Browse competency bank'}</button>
+        <button className="link" onClick={() => change({ competencies:[...d.competencies,{id:uid(),name:'',source:'Added by company',evidence:'',stageId:'',included:true}] })}>+ Add your own</button>
+      </div>
+      {bankOpen && <section className="bank-panel" id="competency-bank" aria-label="Competency bank">
+        <div className="section-head"><div><h2>Competency bank</h2><p>Choose behaviors that matter for this role. Each one is a starting point you can edit.</p></div></div>
+        <label>Search competencies<input type="search" value={bankQuery} placeholder="Try judgment, documentation, or coaching" onChange={e => setBankQuery(e.target.value)}/></label>
+        <div className="bank-grid">
+          {competencyBank.filter(entry => [entry.name,entry.category,entry.evidence].some(text => text.toLowerCase().includes(bankQuery.trim().toLowerCase()))).map(entry => {
+            const added = d.competencies.some(c => c.bankId === entry.id || c.name.trim().toLowerCase() === entry.name.toLowerCase())
+            return <div className="bank-option" key={entry.id}>
+              <span className="bank-category">{entry.category}</span>
+              <h3>{entry.name}</h3><p>{entry.evidence}</p>
+              <button className="secondary" disabled={added} onClick={() => addFromBank(entry)}>{added ? 'Added' : 'Add competency'}</button>
+            </div>
+          })}
+        </div>
+        {!competencyBank.some(entry => [entry.name,entry.category,entry.evidence].some(text => text.toLowerCase().includes(bankQuery.trim().toLowerCase()))) && <p className="bank-empty">No matches. Use “Add your own” for a behavior specific to this role.</p>}
+      </section>}
+      {!d.competencies.length && <div className="empty">No competencies yet. Generate suggestions, browse the bank, or add your own.</div>}
+      {d.competencies.map(c => <section className="card competency" key={c.id}><div className="card-head"><label className="check"><input type="checkbox" checked={c.included} onChange={e=>editComp(c.id,{included:e.target.checked})}/> Include</label><span className="tag">{c.source}</span><button className="link" onClick={() => change({competencies:d.competencies.filter(x=>x.id!==c.id)})}>Remove</button></div><label>Competency<input value={c.name} onChange={e=>editComp(c.id,{name:e.target.value})}/></label><label>What would demonstrate it?<textarea value={c.evidence} onChange={e=>editComp(c.id,{evidence:e.target.value})}/></label><label>Assess at this step<select value={c.stageId} onChange={e=>editComp(c.id,{stageId:e.target.value})}><option value="">Choose a step</option>{d.stages.map(s=><option key={s.id} value={s.id}>{s.name || 'Untitled step'}</option>)}</select></label></section>)}
+      {d.competencies.some(c=>c.source==='Company value') && <div className="hint">Review overlap between a role competency and a value. Count the same behavior twice only if you intend to.</div>}
+    </>}
     {page === 5 && <><h1>Review the <em>interview kit.</em></h1><p className="lead">Edit every question and scoring anchor before managers use it. Changes return the kit to draft. Evidence notes and scores on this screen are for printing; they are not saved.</p><div className="actions no-print"><button className="secondary" onClick={makeKit}>Generate or refresh draft</button><button className="secondary" disabled={!d.items.length} onClick={()=>window.print()}>Print / save PDF</button><button className="primary" disabled={!d.items.length} onClick={()=>{setD(old=>({...old,approved:true}));setMessage('Kit approved in this browser prototype.')}}>Approve kit</button><span className={'badge '+(d.approved?'approved':'')}>{d.approved?'Approved':'Draft'}</span></div>{!d.items.length && <div className="empty">Assign competencies to steps, then generate the kit.</div>}{!!d.items.length && <section className="guide"><div className="eyebrow">MANAGER GUIDE</div><h2>Use the kit consistently</h2><p>Ask the approved core questions. Use follow-ups to clarify what the candidate personally did. Record examples beside each score, then score before discussing candidates with others. Mark missing evidence instead of guessing.</p><p><strong>Scale:</strong> 1 = below the described behavior · 2 = between 1 and 3 · 3 = meets it · 4 = between 3 and 5 · 5 = exceeds it.</p></section>}{d.stages.map((s,i)=>{const items=d.items.filter(q=>d.competencies.find(c=>c.id===q.competencyId)?.stageId===s.id);return items.length?<section className="kit-stage" key={s.id}><div className="stage-title"><div className="eyebrow">STEP {String(i+1).padStart(2,'0')}</div><h2>{s.name}</h2><p>{s.owner} · {s.method}</p><p>{s.purpose}</p></div>{items.map(q=>{const c=d.competencies.find(x=>x.id===q.competencyId)!;return <article className="card" key={q.id}><div className="card-head"><span className="tag">{c.name}</span><small>{c.source}</small></div><label>Question or task<textarea value={q.question} onChange={e=>editItem(q.id,{question:e.target.value})}/><span className="print-field">{q.question}</span></label><label>Follow-up prompts<input value={q.probe} onChange={e=>editItem(q.id,{probe:e.target.value})}/><span className="print-field">{q.probe}</span></label><div className="anchors">{([['1','low'],['3','meets'],['5','high']] as const).map(([n,key])=><label key={n}><b>{n}</b><textarea value={q[key]} onChange={e=>editItem(q.id,{[key]:e.target.value})}/><span className="print-field">{q[key]}</span></label>)}</div><div className="score"><label>Evidence notes<textarea value={notes[q.id] || ""} onChange={e=>setNotes(old=>({...old,[q.id]:e.target.value}))} placeholder="What did the candidate say or do?"/><span className="print-field print-notes">{notes[q.id] || " "}</span></label><label>Score<select value={scores[q.id] || ""} onChange={e=>setScores(old=>({...old,[q.id]:e.target.value}))}><option value="">Not scored</option>{[1,2,3,4,5].map(n=><option key={n}>{n}</option>)}</select><span className="print-field">{scores[q.id] || "Not scored"}</span></label></div></article>})}<p className="decision"><strong>Decision point:</strong> {s.advance || 'Not yet defined.'}</p></section>:null})}</>}
     {message && <div className="toast" role="status">{message}<button onClick={()=>setMessage('')}>×</button></div>}{page>0&&page<5&&<div className="bottom"><button className="link" onClick={()=>setPage(page-1)}>← Back</button><button className="primary" onClick={()=>setPage(page+1)}>Continue →</button></div>}
   </main></div></div>
