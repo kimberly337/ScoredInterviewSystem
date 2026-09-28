@@ -89,10 +89,13 @@ createServer(async (req, res) => {
     }
     if (path === '/admin/login' && req.method === 'POST') {
       if (!password) return send(res, 503)
-      if (!originOkay(req) || !rate(`login:${req.socket.remoteAddress}`, 10)) return send(res, 429)
+      if (!originOkay(req)) return send(res, 403, login('Please open the admin page and try again.'), adminHeaders)
       let input
       try { input = new URLSearchParams(await body(req)).get('password') || '' } catch { return send(res, 400) }
-      if (!equal(input, password)) return send(res, 401, login('The password did not match.'), adminHeaders)
+      if (!equal(input, password)) {
+        const allowed = rate(`login:${req.socket.remoteAddress}`, 10)
+        return send(res, allowed ? 401 : 429, login(allowed ? 'The password did not match.' : 'Too many unsuccessful attempts. Wait a minute, then try again.'), { ...adminHeaders, ...(allowed ? {} : { 'retry-after': '60' }) })
+      }
       return send(res, 303, '', { ...adminHeaders, location: '/admin', 'set-cookie': cookie(req) })
     }
     if (path === '/admin/logout' && req.method === 'POST') {
