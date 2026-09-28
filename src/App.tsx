@@ -2,25 +2,18 @@ import { useEffect, useState } from 'react'
 import './App.css'
 import { competencyBank } from './competencyBank'
 import { recommendStep } from './recommendations'
+import { matchRoleCompetencies } from './roleMatching'
+import { readJobDescription } from './jobDescriptionFile'
 
 type Value = { id: string; name: string; behavior: string; concern: string }
 type Stage = { id: string; name: string; owner: string; method: string; purpose: string; advance: string; template?: string }
-type Competency = { id: string; name: string; source: string; evidence: string; stageId: string; included: boolean; bankId?: string }
+type Competency = { id: string; name: string; source: string; evidence: string; stageId: string; included: boolean; bankId?: string; matchText?: string; matchCues?: string[] }
 type Item = { id: string; competencyId: string; question: string; probe: string; low: string; meets: string; high: string }
 type Draft = { company: string; culture: string; values: Value[]; role: string; description: string; outcomes: string; requirements: string; teachable: string; challenges: string; stages: Stage[]; competencies: Competency[]; items: Item[]; approved: boolean }
 const uid = () => crypto.randomUUID()
 const empty = (): Draft => ({ company: '', culture: '', values: [], role: '', description: '', outcomes: '', requirements: '', teachable: '', challenges: '', stages: [], competencies: [], items: [], approved: false })
 const pages = ['Welcome', 'Company', 'Role', 'Hiring steps', 'Competencies', 'Interview kit']
 const stepOptions = ['Initial/Screening interview', 'Hiring Manager interview', 'Team interview', 'Stakeholder interview', 'Site visit/tour', 'Sr Leader Interview']
-const patterns = [
-  [/quality|accuracy|detail|inspect|registration|proof/i, 'Quality and attention to detail', 'Checks work against an agreed standard and catches errors early.'],
-  [/troubleshoot|problem|repair|equipment|press|machine/i, 'Problem solving', 'Investigates what changed, tests possible causes, and knows when to ask for help.'],
-  [/deadline|schedule|production|prioriti|pace/i, 'Planning and delivery', 'Organizes work, communicates delays, and protects quality under time pressure.'],
-  [/team|collaborat|communicat|customer|lead/i, 'Communication and teamwork', 'Shares useful information and helps the next person complete their work.'],
-  [/learn|train|software|system|adapt/i, 'Learning and adaptability', 'Learns a process, applies feedback, and explains what changed.'],
-  [/safe|safety|clean|housekeep/i, 'Safe work practices', 'Follows the relevant safety process and keeps the work area ready for use.'],
-] as const
-
 function App() {
   const [d, setD] = useState<Draft>(() => { try { return { ...empty(), ...JSON.parse(localStorage.getItem('efactor-draft') || '{}') } } catch { return empty() } })
   const [page, setPage] = useState(0)
@@ -29,16 +22,36 @@ function App() {
   const [scores, setScores] = useState<Record<string, string>>({})
   const [bankOpen, setBankOpen] = useState(false)
   const [bankQuery, setBankQuery] = useState('')
+  const [uploadName, setUploadName] = useState('')
+  const [uploading, setUploading] = useState(false)
   useEffect(() => { localStorage.setItem('efactor-draft', JSON.stringify(d)) }, [d])
   const change = (patch: Partial<Draft>) => setD(old => ({ ...old, ...patch, items: patch.items ?? [], approved: false }))
   const editValue = (id: string, patch: Partial<Value>) => change({ values: d.values.map(v => v.id === id ? { ...v, ...patch } : v) })
   const editStage = (id: string, patch: Partial<Stage>) => change({ stages: d.stages.map(s => s.id === id ? { ...s, ...patch } : s) })
   const editComp = (id: string, patch: Partial<Competency>) => change({ competencies: d.competencies.map(c => c.id === id ? { ...c, ...patch } : c) })
   const editItem = (id: string, patch: Partial<Item>) => change({ items: d.items.map(q => q.id === id ? { ...q, ...patch } : q) })
+  const importDescription = async (file?: File) => {
+    if (!file) return
+    setUploading(true)
+    try {
+      const description = await readJobDescription(file)
+      change({ description })
+      setUploadName(file.name)
+      setMessage(`Text from ${file.name} is ready below. Review it before suggesting competencies.`)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not read this file. Paste the job description instead.')
+    } finally {
+      setUploading(false)
+    }
+  }
   const propose = () => {
     const source = [d.description, d.outcomes, d.requirements, d.challenges].join(' ')
     const kept = d.competencies.filter(c => c.source !== 'Role description' && c.source !== 'Company value')
-    const role = patterns.filter(([re]) => re.test(source)).map(([, name, evidence]) => ({ id: uid(), name, evidence, source: 'Role description', stageId: '', included: true }))
+    const role = matchRoleCompetencies(source).map(match => ({
+      id: uid(), bankId: match.entry.id, name: match.entry.name, evidence: match.entry.evidence,
+      source: 'Role description', matchText: match.excerpt, matchCues: match.cues,
+      stageId: '', included: true,
+    }))
     const values = d.values.filter(v => v.name.trim()).map(v => ({ id: uid(), name: v.name, evidence: v.behavior, source: 'Company value', stageId: '', included: true }))
     const seen = new Set(kept.map(c => c.name.trim().toLowerCase()))
     const suggestions = [...role, ...values].filter(c => {
@@ -48,7 +61,7 @@ function App() {
       return true
     })
     change({ competencies: [...kept, ...suggestions], items: [] })
-    setMessage('Suggestions are ready. Review their evidence and assign each to a hiring step.')
+    setMessage(role.length ? 'Possible matches are ready. Review the matched text and behavior before assigning a step.' : 'No clear bank matches found in the role text. Browse the bank or add the job-specific behaviors yourself.')
   }
   const addFromBank = (entry: (typeof competencyBank)[number]) => {
     if (d.competencies.some(c => c.bankId === entry.id || c.name.trim().toLowerCase() === entry.name.toLowerCase())) return
@@ -77,7 +90,21 @@ function App() {
   return <div className="app"><aside className="side"><div className="brand"><img src="/efactor-logo.png" alt="E Factor Leadership"/><p>HR That Works for You.</p></div><p className="side-label">INTERVIEW SYSTEM</p><nav>{pages.map((name, i) => <button key={name} className={page === i ? 'current' : ''} onClick={() => { setPage(i); setMessage('') }}><span>{i ? String(i).padStart(2, '0') : '⌂'}</span>{name}</button>)}</nav><div className="side-foot">● &nbsp; Draft saved in this browser<small>Prototype workspace</small></div></aside><div className="workspace"><header><span>INTERVIEW DESIGN STUDIO</span><span>{d.company || 'New company'}</span></header><div className="prototype-banner">Prototype: setup is stored only in this browser. Use sample company details and no real candidate information.</div><main><div className="print-brand"><img src="/efactor-logo.png" alt="E Factor Leadership"/><div><span>HR That Works for You.</span><strong>{d.company || "Interview kit"}</strong><span>{d.role || "Role not named"}</span></div></div><div className="eyebrow">{page ? `SETUP / ${String(page).padStart(2, '0')} OF 05` : 'A BETTER WAY TO INTERVIEW'}</div>
     {page === 0 && <><h1>Build interviews around<br/><em>what matters.</em></h1><p className="lead">Turn company values, the work of a real role, and your own hiring process into useful questions and consistent scoring guidance.</p><div className="actions"><button className="primary" onClick={() => setPage(1)}>Start an interview kit →</button><button className="link" onClick={example}>Explore an anonymous example</button></div><div className="overview">{[['01','Describe the company','Define values through behavior people can observe.'],['02','Define the role','Review proposed competencies drawn from the work.'],['03','Shape the process','Add hiring steps, then approve the interview kit.']].map(x => <div key={x[0]}><span>{x[0]}</span><h3>{x[1]}</h3><p>{x[2]}</p></div>)}</div></>}
     {page === 1 && <><h1>Start with the <em>company.</em></h1><p className="lead">Describe how people work here. Give examples that a manager could observe.</p><section className="card">{field('Company name','company')}{field('What is the work environment like?','culture',true,'Describe the team and how people work together.')}</section><div className="section-head"><div><h2>Values in action</h2><p>Give each value a behavior and an example of concern.</p></div><button className="secondary" onClick={() => change({ values: [...d.values, { id: uid(), name: '', behavior: '', concern: '' }] })}>+ Add value</button></div>{d.values.map((v,i) => <section className="card" key={v.id}><div className="card-head"><h3>Value {i+1}</h3><button className="link" onClick={() => change({ values: d.values.filter(x => x.id !== v.id) })}>Remove</button></div><label>Value name<input value={v.name} onChange={e => editValue(v.id,{name:e.target.value})}/></label><label>What would a manager see someone do?<textarea value={v.behavior} onChange={e => editValue(v.id,{behavior:e.target.value})}/></label><label>What behavior would concern you?<textarea value={v.concern} onChange={e => editValue(v.id,{concern:e.target.value})}/></label></section>)}</>}
-    {page === 2 && <><h1>Define the <em>role.</em></h1><p className="lead">Paste the job description, then add what success and challenge look like in practice.</p><section className="card">{field('Role title','role',false,'e.g. Screen Printing Specialist')}{field('Job description','description',true,'Paste the role duties and requirements here.')}<div className="columns">{field('What should this person do well in the first few months?','outcomes',true)}{field('What challenges arise in this work?','challenges',true)}{field('What must they bring on day one?','requirements',true)}{field('What can you teach?','teachable',true)}</div></section></>}
+    {page === 2 && <>
+      <h1>Define the <em>role.</em></h1>
+      <p className="lead">Upload a job description or paste its text, then add what success and challenge look like in practice.</p>
+      <section className="card">
+        {field('Role title','role',false,'e.g. Screen Printing Specialist')}
+        <div className="upload-box">
+          <label>Upload job description (.docx, searchable .pdf, or .txt)
+            <input type="file" accept=".docx,.pdf,.txt" disabled={uploading} onChange={e=>{ const file=e.target.files?.[0]; void importDescription(file); e.target.value='' }}/>
+          </label>
+          <p>{uploading ? 'Reading the file…' : uploadName ? `Imported ${uploadName}. Review the extracted text below.` : 'The file is read in this browser. Only the extracted text is kept in this draft.'}</p>
+        </div>
+        {field('Job description','description',true,'Paste the role duties and requirements here.')}
+        <div className="columns">{field('What should this person do well in the first few months?','outcomes',true)}{field('What challenges arise in this work?','challenges',true)}{field('What must they bring on day one?','requirements',true)}{field('What can you teach?','teachable',true)}</div>
+      </section>
+    </>}
     {page === 3 && <>
       <h1>Your process, <em>your way.</em></h1>
       <p className="lead">Choose the hiring steps your company uses, or name a custom step. Add only the steps you need, then set their order.</p>
@@ -106,7 +133,7 @@ function App() {
     </>}
     {page === 4 && <>
       <h1>Choose what to <em>assess.</em></h1>
-      <p className="lead">Suggestions come from the role and values. You can also choose from the bank or add your own. Review each behavior and its suggested hiring step before assigning it.</p>
+      <p className="lead">Compare the job description with the competency bank, then review the matched text. You can also choose from the bank or add your own. Check each behavior and suggested hiring step before assigning it.</p>
       <div className="actions">
         <button className="secondary" onClick={propose}>Suggest from role and values</button>
         <button className="secondary" aria-expanded={bankOpen} aria-controls="competency-bank" onClick={() => setBankOpen(open => !open)}>{bankOpen ? 'Hide competency bank' : 'Browse competency bank'}</button>
@@ -134,6 +161,7 @@ function App() {
           <div className="card-head"><label className="check"><input type="checkbox" checked={c.included} onChange={e=>editComp(c.id,{included:e.target.checked})}/> Include</label><span className="tag">{c.source}</span><button className="link" onClick={() => change({competencies:d.competencies.filter(x=>x.id!==c.id)})}>Remove</button></div>
           <label>Competency<input value={c.name} onChange={e=>editComp(c.id,{name:e.target.value})}/></label>
           <label>What would demonstrate it?<textarea value={c.evidence} onChange={e=>editComp(c.id,{evidence:e.target.value})}/></label>
+          {c.matchText && <div className="role-match"><strong>Why this appeared</strong><p>Matched wording: {c.matchCues?.join(', ')}</p><blockquote>{c.matchText}</blockquote></div>}
           {suggested && <div className="step-suggestion"><div><strong>Suggested step: {suggested.name}</strong><p>{suggested.reason} Check that this step can gather comparable evidence for every candidate.</p></div><button className="secondary" disabled={c.stageId===suggested.stageId} onClick={()=>editComp(c.id,{stageId:suggested.stageId})}>{c.stageId===suggested.stageId?'Assigned':'Use suggestion'}</button></div>}
           {!suggested && c.name.trim() && d.stages.length>0 && <p className="step-unmatched">No clear step match yet. Choose a step where you can ask the same question or observe the same task for each candidate.</p>}
           <label>Assess at this step<select value={c.stageId} onChange={e=>editComp(c.id,{stageId:e.target.value})}><option value="">Choose a step</option>{d.stages.map(s=><option key={s.id} value={s.id}>{s.name || 'Untitled step'}</option>)}</select></label>

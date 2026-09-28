@@ -76,6 +76,14 @@ input:focus,textarea:focus,select:focus{border-color:var(--purple);box-shadow:0 
 .step-suggestion p,.step-unmatched{margin:6px 0 0;color:var(--ink);font-size:12px;line-height:1.55}
 .step-suggestion button{flex:none}
 .step-unmatched{margin:4px 0 20px;padding:12px 15px;background:var(--taupe)}
+.upload-box{padding:18px 20px;margin:4px 0 23px;background:#faf7fa;border:1px solid var(--line)}
+.upload-box label{margin:0}
+.upload-box input[type=file]{max-width:100%;background:var(--surface)}
+.upload-box p{margin:10px 0 0;color:var(--grey);font-size:12px;line-height:1.5}
+.role-match{padding:14px 17px;margin:0 0 20px;background:#f3f3e8;border-left:3px solid var(--green);font-size:12px;line-height:1.55}
+.role-match strong{color:var(--ink)}
+.role-match p{margin:5px 0;color:var(--ink)}
+.role-match blockquote{margin:7px 0 0;padding-left:12px;border-left:1px solid var(--purple);color:var(--grey)}
 @media(max-width:900px){.side{width:218px}.brand img{width:165px;height:165px}}
 @media(max-width:680px){.side{width:100%;padding:10px 15px}.brand{flex-direction:row;gap:0;margin:0 0 5px;text-align:left;padding:0}.brand img{width:94px;height:94px}.brand p{margin:0}.side nav button.current{padding-left:7px}.bank-grid{grid-template-columns:1fr}.bank-panel{padding:16px}.step-suggestion{align-items:flex-start;flex-direction:column}}
 @media print{.print-brand{display:flex;align-items:center;gap:4px;margin-bottom:20px;color:var(--purple);font-size:11px;font-weight:700}.print-brand img{width:100px;height:100px;object-fit:contain}}
