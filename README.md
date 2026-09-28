@@ -18,12 +18,12 @@ The setup draft is saved in the current browser's local storage. `npm run build`
 1. Describe the company and give observable examples for each value.
 2. Enter a role description, outcomes, requirements, and teachable skills.
 3. Add the company's hiring steps and decision points.
-4. Generate rule-based competency suggestions from the role text and values, browse a starter competency bank, or add your own. Edit, include, and assign each competency to a step.
+4. Generate rule-based competency suggestions from the role text and values, browse a starter competency bank, or add your own. Edit and include each competency. The app suggests a hiring step when its name and the step's format provide a clear match; review the reason and accept or override the suggested assignment.
 5. Generate a draft kit with editable questions, follow-ups, 1/3/5 scoring anchors, and a manager guide. Print or save it as a PDF using the browser.
 
 The anonymous Screen Printing Specialist example is illustrative. It contains no NTZ name, distinctive value names, schedule, or contact details. The competency suggestions and kit wording are deterministic placeholders; they are not AI-generated or validated by an HR reviewer.
 
-The starter bank in `src/competencyBank.ts` contains editable, job-neutral examples. It is not a validated assessment or an official OPM/SHRM competency library. The company must choose behaviors relevant to the job and review the generated questions and scoring anchors before use. For background, see [OPM's competency overview](https://www.opm.gov/policy-data-oversight/assessment-and-selection/competencies/) and [EEOC's employer guidance on hiring questions](https://www.eeoc.gov/employers/small-business/what-shouldnt-i-ask-when-hiring).
+The starter bank in `src/competencyBank.ts` contains editable, job-neutral examples. It is not a validated assessment or an official OPM/SHRM competency library. Step recommendations in `src/recommendations.ts` are transparent keyword rules, not job analysis or evidence of validity. The company must choose job-relevant behaviors, use comparable questions or tasks, and review the generated questions and scoring anchors before use. For background, see [OPM's structured interview guide](https://www.opm.gov/policy-data-oversight/assessment-and-selection/structured-interviews/guide/) and [EEOC's selection procedures guidance](https://www.eeoc.gov/laws/guidance/employment-tests-and-selection-procedures).
 
 ## Prototype boundary
 
