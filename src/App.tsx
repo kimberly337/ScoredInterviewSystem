@@ -4,16 +4,19 @@ import { competencyBank } from './competencyBank'
 import { recommendStep } from './recommendations'
 import { matchRoleCompetencies } from './roleMatching'
 import { readJobDescription } from './jobDescriptionFile'
+import ReferenceGuide from './ReferenceGuide'
 
 type Value = { id: string; name: string; behavior: string; concern: string }
 type Stage = { id: string; name: string; owner: string; method: string; purpose: string; advance: string; template?: string }
 type Competency = { id: string; name: string; source: string; evidence: string; stageId: string; included: boolean; bankId?: string; matchText?: string; matchCues?: string[] }
 type Item = { id: string; competencyId: string; question: string; probe: string; low: string; meets: string; high: string }
-type Draft = { company: string; culture: string; values: Value[]; role: string; description: string; outcomes: string; requirements: string; teachable: string; challenges: string; stages: Stage[]; competencies: Competency[]; items: Item[]; approved: boolean }
+type ReferenceItem = { id: string; competencyId: string; question: string; probe: string }
+type Draft = { company: string; culture: string; values: Value[]; role: string; description: string; outcomes: string; requirements: string; teachable: string; challenges: string; stages: Stage[]; competencies: Competency[]; items: Item[]; referenceCompetencyIds: string[]; referenceItems: ReferenceItem[]; approved: boolean }
 const uid = () => crypto.randomUUID()
-const empty = (): Draft => ({ company: '', culture: '', values: [], role: '', description: '', outcomes: '', requirements: '', teachable: '', challenges: '', stages: [], competencies: [], items: [], approved: false })
+const empty = (): Draft => ({ company: '', culture: '', values: [], role: '', description: '', outcomes: '', requirements: '', teachable: '', challenges: '', stages: [], competencies: [], items: [], referenceCompetencyIds: [], referenceItems: [], approved: false })
 const pages = ['Welcome', 'Company', 'Role', 'Hiring steps', 'Competencies', 'Interview kit']
-const stepOptions = ['Initial/Screening interview', 'Hiring Manager interview', 'Team interview', 'Stakeholder interview', 'Site visit/tour', 'Sr Leader Interview']
+const stepOptions = ['Initial/Screening interview', 'Hiring Manager interview', 'Team interview', 'Stakeholder interview', 'Site visit/tour', 'Sr Leader Interview', 'Reference check']
+const isReferenceStage = (stage: Stage) => stage.template === 'Reference check' || (!stage.template && stage.name === 'Reference check')
 function App() {
   const [d, setD] = useState<Draft>(() => { try { return { ...empty(), ...JSON.parse(localStorage.getItem('efactor-draft') || '{}') } } catch { return empty() } })
   const [page, setPage] = useState(0)
@@ -25,11 +28,12 @@ function App() {
   const [uploadName, setUploadName] = useState('')
   const [uploading, setUploading] = useState(false)
   useEffect(() => { localStorage.setItem('efactor-draft', JSON.stringify(d)) }, [d])
-  const change = (patch: Partial<Draft>) => setD(old => ({ ...old, ...patch, items: patch.items ?? [], approved: false }))
+  const change = (patch: Partial<Draft>) => setD(old => ({ ...old, ...patch, items: patch.items ?? [], referenceItems: patch.referenceItems ?? [], approved: false }))
   const editValue = (id: string, patch: Partial<Value>) => change({ values: d.values.map(v => v.id === id ? { ...v, ...patch } : v) })
   const editStage = (id: string, patch: Partial<Stage>) => change({ stages: d.stages.map(s => s.id === id ? { ...s, ...patch } : s) })
   const editComp = (id: string, patch: Partial<Competency>) => change({ competencies: d.competencies.map(c => c.id === id ? { ...c, ...patch } : c) })
-  const editItem = (id: string, patch: Partial<Item>) => change({ items: d.items.map(q => q.id === id ? { ...q, ...patch } : q) })
+  const editItem = (id: string, patch: Partial<Item>) => change({ items: d.items.map(q => q.id === id ? { ...q, ...patch } : q), referenceItems: d.referenceItems })
+  const editReferenceItem = (id: string, patch: Partial<ReferenceItem>) => change({ referenceItems: d.referenceItems.map(q => q.id === id ? { ...q, ...patch } : q), items: d.items })
   const importDescription = async (file?: File) => {
     if (!file) return
     setUploading(true)
@@ -60,7 +64,7 @@ function App() {
       seen.add(key)
       return true
     })
-    change({ competencies: [...kept, ...suggestions], items: [] })
+    change({ competencies: [...kept, ...suggestions], referenceCompetencyIds: d.referenceCompetencyIds.filter(id => kept.some(c => c.id === id)), items: [] })
     setMessage(role.length ? 'Possible matches are ready. Review the matched text and behavior before assigning a step.' : 'No clear bank matches found in the role text. Browse the bank or add the job-specific behaviors yourself.')
   }
   const addFromBank = (entry: (typeof competencyBank)[number]) => {
@@ -70,9 +74,17 @@ function App() {
   }
   const makeKit = () => {
     const selected = d.competencies.filter(c => c.included)
-    if (!selected.length || selected.some(c => !c.stageId || !c.name.trim() || !c.evidence.trim()) || !d.stages.length) { setMessage('Include at least one complete competency and assign every included competency to a step.'); return }
+    if (!selected.length || selected.some(c => !c.name.trim() || !c.evidence.trim() || !d.stages.some(s => s.id === c.stageId && !isReferenceStage(s))) || !d.stages.some(s => !isReferenceStage(s))) { setMessage('Include at least one complete competency and assign every included competency to an interview or work sample step.'); return }
+    const hasReferenceCheck = d.stages.some(isReferenceStage)
+    const referenceCompetencies = selected.filter(c => d.referenceCompetencyIds.includes(c.id))
+    if (hasReferenceCheck && !referenceCompetencies.length) { setMessage('Choose at least one competency to verify in the reference check. Two or three work well.'); return }
     const prior = new Map(d.items.map(item => [item.competencyId, item]))
-    change({ items: selected.map(c => prior.get(c.id) || {
+    const priorReference = new Map(d.referenceItems.map(item => [item.competencyId, item]))
+    change({ referenceItems: hasReferenceCheck ? referenceCompetencies.map(c => priorReference.get(c.id) || {
+      id: uid(), competencyId: c.id,
+      question: `Can you describe a specific time you observed this person demonstrate ${c.name.toLowerCase()}? What did they do, and what was the result?`,
+      probe: 'How directly did you observe this? How often did you see it? What context would help us understand the example?',
+    }) : [], items: selected.map(c => prior.get(c.id) || {
       id: uid(), competencyId: c.id,
       question: /work|sample|practical|task/i.test(d.stages.find(s => s.id === c.stageId)?.method || '') ? `Show how you would demonstrate ${c.name.toLowerCase()} in this task. What did you notice and do?` : `Tell me about a specific time you demonstrated ${c.name.toLowerCase()} at work. What happened, what did you do, and what was the result?`,
       probe: 'What was your own part? What did you notice? What would you do differently?',
@@ -83,7 +95,7 @@ function App() {
     setPage(5); setMessage('Draft generated. Review and edit the questions and anchors before approval.')
   }
   const example = () => {
-    setD({ company: 'Example organization', culture: 'A small production team that checks work carefully and communicates problems early.', values: [{ id: uid(), name: 'Responsibility', behavior: 'Names a problem, takes an appropriate next step, and keeps affected teammates informed.', concern: 'Hides a quality issue or shifts blame.' }], role: 'Screen Printing Specialist', description: 'Prepare and run print jobs. Check color, placement, and registration against an approved sample. Use equipment safely and work with the team to meet deadlines.', outcomes: 'Produce accurate work and catch print issues before a run continues.', requirements: 'Attention to detail and ability to follow a production process.', teachable: 'Specific equipment and scheduling software.', challenges: 'A print drifts from the approved sample during a production run.', stages: [{ id: uid(), name: 'Initial/Screening interview', template: 'Initial/Screening interview', owner: 'Hiring manager', method: 'Conversation', purpose: 'Explore past work and quality concerns.', advance: 'Review the evidence against each criterion.' }, { id: uid(), name: 'Work sample', template: 'custom', owner: 'Production lead', method: 'Practical task', purpose: 'Observe a representative quality check.', advance: 'Review observed work against scoring anchors.' }], competencies: [], items: [], approved: false })
+    setD({ company: 'Example organization', culture: 'A small production team that checks work carefully and communicates problems early.', values: [{ id: uid(), name: 'Responsibility', behavior: 'Names a problem, takes an appropriate next step, and keeps affected teammates informed.', concern: 'Hides a quality issue or shifts blame.' }], role: 'Screen Printing Specialist', description: 'Prepare and run print jobs. Check color, placement, and registration against an approved sample. Use equipment safely and work with the team to meet deadlines.', outcomes: 'Produce accurate work and catch print issues before a run continues.', requirements: 'Attention to detail and ability to follow a production process.', teachable: 'Specific equipment and scheduling software.', challenges: 'A print drifts from the approved sample during a production run.', stages: [{ id: uid(), name: 'Initial/Screening interview', template: 'Initial/Screening interview', owner: 'Hiring manager', method: 'Conversation', purpose: 'Explore past work and quality concerns.', advance: 'Review the evidence against each criterion.' }, { id: uid(), name: 'Work sample', template: 'custom', owner: 'Production lead', method: 'Practical task', purpose: 'Observe a representative quality check.', advance: 'Review observed work against scoring anchors.' }], competencies: [], items: [], referenceCompetencyIds: [], referenceItems: [], approved: false })
     setPage(1); setMessage('Anonymous example loaded. Its steps are illustrative and editable.')
   }
   const field = (label: string, key: keyof Pick<Draft, 'company'|'culture'|'role'|'description'|'outcomes'|'requirements'|'teachable'|'challenges'>, multi = false, hint = '') => <label>{label}{multi ? <textarea value={d[key]} placeholder={hint} onChange={e => change({ [key]: e.target.value })} /> : <input value={d[key]} placeholder={hint} onChange={e => change({ [key]: e.target.value })} />}</label>
@@ -107,7 +119,7 @@ function App() {
     </>}
     {page === 3 && <>
       <h1>Your process, <em>your way.</em></h1>
-      <p className="lead">Choose the hiring steps your company uses, or name a custom step. Add only the steps you need, then set their order.</p>
+      <p className="lead">Choose the hiring steps your company uses, or name a custom step. Add only the steps you need, then set their order. Reference check is an optional final step.</p>
       <div className="section-head"><div><h2>Hiring steps</h2><p>Use the arrows to set the order.</p></div><button className="secondary" onClick={() => change({ stages: [...d.stages,{id:uid(),name:'',template:'',owner:'',method:'',purpose:'',advance:''}] })}>+ Add step</button></div>
       {!d.stages.length && <div className="empty">Add the first point where you assess a candidate.</div>}
       {d.stages.map((s,i) => {
@@ -119,7 +131,7 @@ function App() {
             <button className="link" onClick={() => change({ stages:d.stages.filter(x=>x.id!==s.id), competencies:d.competencies.map(c=>c.stageId===s.id?{...c,stageId:''}:c) })}>Remove</button>
           </div></div>
           <div className="columns">
-            <label>Choose a hiring step<select value={selected} onChange={e=>editStage(s.id,{template:e.target.value,name:e.target.value==='custom'?'':e.target.value})}>
+            <label>Choose a hiring step<select value={selected} onChange={e=>editStage(s.id,e.target.value==='Reference check' ? {template:'Reference check',name:'Reference check',owner:s.owner||'Hiring manager or HR',method:'Structured phone call',purpose:'Verify job-related behaviors with specific examples.',advance:'Review reference evidence alongside the interview scorecards.'} : {template:e.target.value,name:e.target.value==='custom'?'':e.target.value})}>
               <option value="">Choose a step</option>{stepOptions.map(option=><option key={option} value={option}>{option}</option>)}<option value="custom">Custom step</option>
             </select></label>
             {selected === 'custom' && <label>Custom step name<input value={s.name} placeholder="e.g. Work sample" onChange={e=>editStage(s.id,{name:e.target.value})}/></label>}
@@ -128,6 +140,7 @@ function App() {
             <label>What must you learn?<textarea value={s.purpose} onChange={e=>editStage(s.id,{purpose:e.target.value})}/></label>
           </div>
           <label>What is needed to move forward?<textarea value={s.advance} onChange={e=>editStage(s.id,{advance:e.target.value})}/></label>
+          {isReferenceStage(s) && <p className="reference-tip">Choose two or three competencies to verify on the Competencies page. The kit will include a separate call sheet for each reference.</p>}
         </section>
       })}
     </>}
@@ -158,18 +171,19 @@ function App() {
       {d.competencies.map(c => {
         const suggested = recommendStep(c, d.stages)
         return <section className="card competency" key={c.id}>
-          <div className="card-head"><label className="check"><input type="checkbox" checked={c.included} onChange={e=>editComp(c.id,{included:e.target.checked})}/> Include</label><span className="tag">{c.source}</span><button className="link" onClick={() => change({competencies:d.competencies.filter(x=>x.id!==c.id)})}>Remove</button></div>
+          <div className="card-head"><label className="check"><input type="checkbox" checked={c.included} onChange={e=>change({competencies:d.competencies.map(x=>x.id===c.id?{...x,included:e.target.checked}:x),referenceCompetencyIds:e.target.checked?d.referenceCompetencyIds:d.referenceCompetencyIds.filter(id=>id!==c.id)})}/> Include</label><span className="tag">{c.source}</span><button className="link" onClick={() => change({competencies:d.competencies.filter(x=>x.id!==c.id),referenceCompetencyIds:d.referenceCompetencyIds.filter(id=>id!==c.id)})}>Remove</button></div>
           <label>Competency<input value={c.name} onChange={e=>editComp(c.id,{name:e.target.value})}/></label>
           <label>What would demonstrate it?<textarea value={c.evidence} onChange={e=>editComp(c.id,{evidence:e.target.value})}/></label>
           {c.matchText && <div className="role-match"><strong>Why this appeared</strong><p>Matched wording: {c.matchCues?.join(', ')}</p><blockquote>{c.matchText}</blockquote></div>}
           {suggested && <div className="step-suggestion"><div><strong>Suggested step: {suggested.name}</strong><p>{suggested.reason} Check that this step can gather comparable evidence for every candidate.</p></div><button className="secondary" disabled={c.stageId===suggested.stageId} onClick={()=>editComp(c.id,{stageId:suggested.stageId})}>{c.stageId===suggested.stageId?'Assigned':'Use suggestion'}</button></div>}
           {!suggested && c.name.trim() && d.stages.length>0 && <p className="step-unmatched">No clear step match yet. Choose a step where you can ask the same question or observe the same task for each candidate.</p>}
-          <label>Assess at this step<select value={c.stageId} onChange={e=>editComp(c.id,{stageId:e.target.value})}><option value="">Choose a step</option>{d.stages.map(s=><option key={s.id} value={s.id}>{s.name || 'Untitled step'}</option>)}</select></label>
+          <label>Assess at this step<select value={c.stageId} onChange={e=>editComp(c.id,{stageId:e.target.value})}><option value="">Choose a step</option>{d.stages.filter(s => !isReferenceStage(s)).map(s=><option key={s.id} value={s.id}>{s.name || 'Untitled step'}</option>)}</select></label>
         </section>
       })}
+      {d.stages.some(isReferenceStage) && <section className="reference-selection"><h2>Reference check</h2><p>Which two or three job-related behaviors should a reference help verify? Ask the same core questions for each candidate. The reference check adds evidence; it does not replace an interview step.</p>{d.competencies.filter(c=>c.included && c.name.trim()).map(c=><label className="check" key={c.id}><input type="checkbox" checked={d.referenceCompetencyIds.includes(c.id)} disabled={!d.referenceCompetencyIds.includes(c.id) && d.referenceCompetencyIds.length>=3} onChange={e=>change({referenceCompetencyIds:e.target.checked?[...d.referenceCompetencyIds,c.id]:d.referenceCompetencyIds.filter(id=>id!==c.id)})}/>{c.name}</label>)}{!d.competencies.some(c=>c.included && c.name.trim()) && <p>Include competencies above to select them here.</p>}<small>{d.referenceCompetencyIds.filter(id=>d.competencies.some(c=>c.id===id && c.included)).length} of 3 selected</small></section>}
       {d.competencies.some(c=>c.source==='Company value') && <div className="hint">Review overlap between a role competency and a value. Count the same behavior twice only if you intend to.</div>}
     </>}
-    {page === 5 && <><h1>Review the <em>interview kit.</em></h1><p className="lead">Edit every question and scoring anchor before managers use it. Changes return the kit to draft. Evidence notes and scores on this screen are for printing; they are not saved.</p><div className="actions no-print"><button className="secondary" onClick={makeKit}>Generate or refresh draft</button><button className="secondary" disabled={!d.items.length} onClick={()=>window.print()}>Print / save PDF</button><button className="primary" disabled={!d.items.length} onClick={()=>{setD(old=>({...old,approved:true}));setMessage('Kit approved in this browser prototype.')}}>Approve kit</button><span className={'badge '+(d.approved?'approved':'')}>{d.approved?'Approved':'Draft'}</span></div>{!d.items.length && <div className="empty">Assign competencies to steps, then generate the kit.</div>}{!!d.items.length && <section className="guide"><div className="eyebrow">MANAGER GUIDE</div><h2>Use the kit consistently</h2><p>Ask the approved core questions. Use follow-ups to clarify what the candidate personally did. Record examples beside each score, then score before discussing candidates with others. Mark missing evidence instead of guessing.</p><p><strong>Scale:</strong> 1 = below the described behavior · 2 = between 1 and 3 · 3 = meets it · 4 = between 3 and 5 · 5 = exceeds it.</p></section>}{d.stages.map((s,i)=>{const items=d.items.filter(q=>d.competencies.find(c=>c.id===q.competencyId)?.stageId===s.id);return items.length?<section className="kit-stage" key={s.id}><div className="stage-title"><div className="eyebrow">STEP {String(i+1).padStart(2,'0')}</div><h2>{s.name}</h2><p>{s.owner} · {s.method}</p><p>{s.purpose}</p></div>{items.map(q=>{const c=d.competencies.find(x=>x.id===q.competencyId)!;return <article className="card" key={q.id}><div className="card-head"><span className="tag">{c.name}</span><small>{c.source}</small></div><label>Question or task<textarea value={q.question} onChange={e=>editItem(q.id,{question:e.target.value})}/><span className="print-field">{q.question}</span></label><label>Follow-up prompts<input value={q.probe} onChange={e=>editItem(q.id,{probe:e.target.value})}/><span className="print-field">{q.probe}</span></label><div className="anchors">{([['1','low'],['3','meets'],['5','high']] as const).map(([n,key])=><label key={n}><b>{n}</b><textarea value={q[key]} onChange={e=>editItem(q.id,{[key]:e.target.value})}/><span className="print-field">{q[key]}</span></label>)}</div><div className="score"><label>Evidence notes<textarea value={notes[q.id] || ""} onChange={e=>setNotes(old=>({...old,[q.id]:e.target.value}))} placeholder="What did the candidate say or do?"/><span className="print-field print-notes">{notes[q.id] || " "}</span></label><label>Score<select value={scores[q.id] || ""} onChange={e=>setScores(old=>({...old,[q.id]:e.target.value}))}><option value="">Not scored</option>{[1,2,3,4,5].map(n=><option key={n}>{n}</option>)}</select><span className="print-field">{scores[q.id] || "Not scored"}</span></label></div></article>})}<p className="decision"><strong>Decision point:</strong> {s.advance || 'Not yet defined.'}</p></section>:null})}</>}
+    {page === 5 && <><h1>Review the <em>interview kit.</em></h1><p className="lead">Edit every question and scoring anchor before managers use it. Changes return the kit to draft. Evidence notes and scores on this screen are for printing; they are not saved.</p><div className="actions no-print"><button className="secondary" onClick={makeKit}>Generate or refresh draft</button><button className="secondary" disabled={!d.items.length} onClick={()=>window.print()}>Print / save PDF</button><button className="primary" disabled={!d.items.length} onClick={()=>{setD(old=>({...old,approved:true}));setMessage('Kit approved in this browser prototype.')}}>Approve kit</button><span className={'badge '+(d.approved?'approved':'')}>{d.approved?'Approved':'Draft'}</span></div>{!d.items.length && <div className="empty">Assign competencies to steps, then generate the kit.</div>}{!!d.items.length && <section className="guide"><div className="eyebrow">MANAGER GUIDE</div><h2>Use the kit consistently</h2><p>Ask the approved core questions. Use follow-ups to clarify what the candidate personally did. Record examples beside each score, then score before discussing candidates with others. Mark missing evidence instead of guessing.</p><p><strong>Scale:</strong> 1 = below the described behavior · 2 = between 1 and 3 · 3 = meets it · 4 = between 3 and 5 · 5 = exceeds it.</p></section>}{d.stages.map((s,i)=>{const items=d.items.filter(q=>d.competencies.find(c=>c.id===q.competencyId)?.stageId===s.id);return isReferenceStage(s)?<ReferenceGuide key={s.id} stage={s} index={i} items={d.referenceItems} competencies={d.competencies} onEdit={editReferenceItem}/>:items.length?<section className="kit-stage" key={s.id}><div className="stage-title"><div className="eyebrow">STEP {String(i+1).padStart(2,'0')}</div><h2>{s.name}</h2><p>{s.owner} · {s.method}</p><p>{s.purpose}</p></div>{items.map(q=>{const c=d.competencies.find(x=>x.id===q.competencyId)!;return <article className="card" key={q.id}><div className="card-head"><span className="tag">{c.name}</span><small>{c.source}</small></div><label>Question or task<textarea value={q.question} onChange={e=>editItem(q.id,{question:e.target.value})}/><span className="print-field">{q.question}</span></label><label>Follow-up prompts<input value={q.probe} onChange={e=>editItem(q.id,{probe:e.target.value})}/><span className="print-field">{q.probe}</span></label><div className="anchors">{([['1','low'],['3','meets'],['5','high']] as const).map(([n,key])=><label key={n}><b>{n}</b><textarea value={q[key]} onChange={e=>editItem(q.id,{[key]:e.target.value})}/><span className="print-field">{q[key]}</span></label>)}</div><div className="score"><label>Evidence notes<textarea value={notes[q.id] || ""} onChange={e=>setNotes(old=>({...old,[q.id]:e.target.value}))} placeholder="What did the candidate say or do?"/><span className="print-field print-notes">{notes[q.id] || " "}</span></label><label>Score<select value={scores[q.id] || ""} onChange={e=>setScores(old=>({...old,[q.id]:e.target.value}))}><option value="">Not scored</option>{[1,2,3,4,5].map(n=><option key={n}>{n}</option>)}</select><span className="print-field">{scores[q.id] || "Not scored"}</span></label></div></article>})}<p className="decision"><strong>Decision point:</strong> {s.advance || 'Not yet defined.'}</p></section>:null})}</>}
     {message && <div className="toast" role="status">{message}<button onClick={()=>setMessage('')}>×</button></div>}{page>0&&page<5&&<div className="bottom"><button className="link" onClick={()=>setPage(page-1)}>← Back</button><button className="primary" onClick={()=>setPage(page+1)}>Continue →</button></div>}
   </main></div></div>
 }

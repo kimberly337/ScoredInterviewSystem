@@ -17,9 +17,9 @@ The setup draft is saved in the current browser's local storage. `npm run build`
 
 1. Describe the company and give observable examples for each value.
 2. Upload a `.docx`, searchable `.pdf`, or `.txt` job description, or paste its text. Review the extracted text and add outcomes, requirements, and teachable skills.
-3. Add the company's hiring steps and decision points.
-4. Compare the role text with the 84-entry competency bank. The matching words and an excerpt appear beside each suggested competency. Review these possible matches, browse the bank, or add your own. Edit and include each competency. The app suggests a hiring step when its name and the step's format provide a clear match; review the reason and accept or override the suggested assignment.
-5. Generate a draft kit with editable questions, follow-ups, 1/3/5 scoring anchors, and a manager guide. Print or save it as a PDF using the browser.
+3. Add the company's hiring steps and decision points. The optional Reference check preset creates a final call sheet.
+4. Compare the role text with the 84-entry competency bank. The matching words and an excerpt appear beside each suggested competency. Review these possible matches, browse the bank, or add your own. Edit and include each competency. The app suggests a hiring step when its name and the step's format provide a clear match; review the reason and accept or override the suggested assignment. If the reference step is used, select up to three included competencies to verify.
+5. Generate a draft kit with editable interview questions, follow-ups, 1/3/5 scoring anchors, and a manager guide. The reference sheet uses the chosen competencies for editable core questions, prompts, notes, a 1–5 evidence rating, and a “Not observed” option. Print a separate copy for each reference or save the kit as a PDF using the browser.
 
 The anonymous Screen Printing Specialist example is illustrative. It contains no NTZ name, distinctive value names, schedule, or contact details. The competency suggestions and kit wording are deterministic placeholders; they are not AI-generated or validated by an HR reviewer.
 
@@ -27,7 +27,7 @@ The bank in `src/competencyBank.ts` contains original, editable, job-neutral exa
 
 ## Prototype boundary
 
-This is a single-browser design prototype. Uploaded files are read in the browser; the extracted text is saved in browser storage with the draft, while the original file is not retained. Files are limited to 10 MB, and PDFs to 25 pages. Image scans and protected documents have no supported text extraction; paste the text instead. Do not enter real candidate information or sensitive company records. Notes and scores on the printable kit are form fields for printing only; they are not stored as candidate records. Browser storage is not an account, database, backup, or access control system. Approval is a local draft flag, not an audit record.
+This is a single-browser design prototype. Uploaded files are read in the browser; the extracted text is saved in browser storage with the draft, while the original file is not retained. Files are limited to 10 MB, and PDFs to 25 pages. Image scans and protected documents have no supported text extraction; paste the text instead. Do not enter real candidate or reference information or sensitive company records. Interview and reference notes, contact details, and ratings on the printable kit are temporary form fields for printing only; they are not stored as candidate records. Browser storage is not an account, database, backup, or access control system. Approval is a local draft flag, not an audit record.
 
 ## Next implementation slice
 
