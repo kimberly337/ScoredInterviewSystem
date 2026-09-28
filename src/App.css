@@ -31,6 +31,12 @@ h1 em{color:var(--purple);font-style:normal}
 .secondary:hover{background:#f6f0f6}
 .link{color:var(--purple)}
 .overview{border-color:var(--line)}
+.sample-callout{display:flex;align-items:center;justify-content:space-between;gap:24px;border-left:4px solid var(--purple);margin-top:8px}
+.sample-callout h2{font:700 19px Montserrat,Arial,sans-serif;color:var(--purple);margin:0 0 8px}
+.sample-callout p{color:var(--ink);font-size:13px;line-height:1.55;margin:0 0 8px}
+.sample-callout small{color:var(--grey);font-size:11px}
+.sample-callout .secondary{flex:none}
+@media(max-width:680px){.sample-callout{align-items:stretch;flex-direction:column}}
 .overview span{font:700 19px Montserrat,Arial,sans-serif;color:var(--purple)}
 .overview h3{font:700 18px Montserrat,Arial,sans-serif;color:var(--ink)}
 .overview p{color:var(--grey)}
