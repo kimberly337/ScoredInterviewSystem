@@ -74,7 +74,7 @@ function App() {
   useEffect(() => { localStorage.setItem('efactor-draft', JSON.stringify(d)) }, [d])
   const change = (patch: Partial<Draft>) => setD(old => ({ ...old, ...patch, items: patch.items ?? [], referenceItems: patch.referenceItems ?? [], backgroundItems: patch.backgroundItems ?? [], approved: false }))
   const editValue = (id: string, patch: Partial<Value>) => change({ values: d.values.map(v => v.id === id ? { ...v, ...patch } : v) })
-  const editStage = (id: string, patch: Partial<Stage>) => change({ stages: d.stages.map(s => s.id === id ? { ...s, ...patch } : s) })
+  const editStage = (id: string, patch: Partial<Stage>) => change({ stages: d.stages.map(s => s.id === id ? { ...s, ...patch } : s), ...(Object.keys(patch).length === 1 && 'questionCount' in patch ? { items: d.items, referenceItems: d.referenceItems, backgroundItems: d.backgroundItems } : {}) })
   const editComp = (id: string, patch: Partial<Competency>) => change({ competencies: d.competencies.map(c => c.id === id ? { ...c, ...patch } : c) })
   const editBackground = (id: string, patch: Partial<BackgroundItem>) => change({ backgroundItems: (d.backgroundItems || []).map(q => q.id === id ? { ...q, ...patch } : q), items: d.items, referenceItems: d.referenceItems })
   const editItem = (id: string, patch: Partial<Item>) => change({ items: d.items.map(q => q.id === id ? { ...q, ...patch } : q), referenceItems: d.referenceItems, backgroundItems: d.backgroundItems })
