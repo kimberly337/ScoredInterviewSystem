@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import BackgroundQuestions from './BackgroundQuestions'
+import type { BackgroundItem } from './questionPlanning'
 
 type ReferenceItem = { id: string; competencyId: string; question: string; probe: string }
 type Competency = { id: string; name: string; evidence: string }
@@ -6,20 +8,22 @@ type Props = {
   stage: { name: string; owner: string; method: string; purpose: string; advance: string }
   index: number
   items: ReferenceItem[]
+  backgroundItems: BackgroundItem[]
+  onEditBackground: (id: string, patch: Partial<BackgroundItem>) => void
   competencies: Competency[]
   onEdit: (id: string, patch: Partial<ReferenceItem>) => void
 }
 
-export default function ReferenceGuide({ stage, index, items, competencies, onEdit }: Props) {
+export default function ReferenceGuide({ stage, index, items, backgroundItems, onEditBackground, competencies, onEdit }: Props) {
   const [details, setDetails] = useState<Record<string, string>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [ratings, setRatings] = useState<Record<string, string>>({})
   const detail = (key: string, label: string) => <label>{label}<input value={details[key] || ''} onChange={e => setDetails(old => ({ ...old, [key]: e.target.value }))}/><span className="print-field print-notes">{details[key] || ' '}</span></label>
   return <section className="kit-stage reference-guide">
-    <div className="stage-title"><div className="eyebrow">STEP {String(index + 1).padStart(2, '0')}</div><h2>{stage.name}</h2><p>{stage.owner} · {stage.method}</p><p>{stage.purpose}</p></div>
+    <div className="stage-title"><div className="eyebrow">STEP {String(index + 1).padStart(2, '0')}</div><h2>{stage.name}</h2><p>{stage.owner} · {stage.method}</p><p>{stage.purpose}</p><p><strong>{items.length + backgroundItems.length} core questions</strong> · {items.length} competency questions · {backgroundItems.length} background questions</p></div>
     <div className="reference-instructions"><strong>One sheet per reference</strong><p>Confirm the candidate has authorized this contact. Ask the same core questions for each candidate and record examples in the reference’s own words. If the reference cannot speak to a behavior, mark “Not observed.” Review specific concerns with the candidate before deciding.</p></div>
     <div className="columns reference-details">{detail('candidate','Candidate')}{detail('reference','Reference name')}{detail('relationship','Working relationship')}{detail('organization','Organization / role')}{detail('period','Period worked together')}{detail('date','Date and checker')}{detail('permission','Permission to contact confirmed by')}</div>
-    <p className="reference-opening">Opening: “How did you work with the candidate, and how directly did you observe their work?”</p>
+    <BackgroundQuestions items={backgroundItems} onEdit={onEditBackground}/><h3>Selected competency evidence</h3>
     {items.map(item => {
       const competency = competencies.find(c => c.id === item.competencyId)
       if (!competency) return null

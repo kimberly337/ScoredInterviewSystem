@@ -16,7 +16,16 @@ const adminHeaders = { 'content-type': 'text/html; charset=utf-8', 'cache-contro
 function send(res, status, body = '', extra = {}) { res.writeHead(status, { ...headers, ...extra }).end(body) }
 function escape(value) { return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]) }
 function equal(a, b) { return timingSafeEqual(createHash('sha256').update(a).digest(), createHash('sha256').update(b).digest()) }
-function originOkay(req) { try { return new URL(req.headers.origin).host === req.headers.host } catch { return false } }
+function originOkay(req) {
+  const host = req.headers.host
+  const forwardedHost = req.headers['x-forwarded-host']?.split(',')[0].trim()
+  const hosts = [host, forwardedHost].filter(Boolean)
+  const sameHost = value => { try { return hosts.includes(new URL(value).host) } catch { return false } }
+  if (req.headers.origin) return sameHost(req.headers.origin)
+  // Some browser and proxy combinations omit Origin on an HTML form POST.
+  // Require the browser's same-origin fetch metadata and a matching Referer then.
+  return req.headers['sec-fetch-site'] === 'same-origin' && sameHost(req.headers.referer)
+}
 function rate(key, max) {
   const now = Date.now(), old = rates.get(key), item = old && now - old.start < 60_000 ? old : { start: now, count: 0 }
   item.count += 1
