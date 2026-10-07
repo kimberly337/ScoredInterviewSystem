@@ -13,7 +13,7 @@ const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; cha
 const rates = new Map()
 const headers = { 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'x-frame-options': 'DENY' }
 // Keep same-site form provenance available to originOkay without sending it to other sites.
-const adminHeaders = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'same-origin', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'" }
+const adminHeaders = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'same-origin', 'content-security-policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'" }
 function send(res, status, body = '', extra = {}) { res.writeHead(status, { ...headers, ...extra }).end(body) }
 function escape(value) { return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]) }
 function equal(a, b) { return timingSafeEqual(createHash('sha256').update(a).digest(), createHash('sha256').update(b).digest()) }
@@ -57,7 +57,11 @@ function page(content, refresh = false) {
   :root{font-family:Montserrat,Arial,sans-serif;color:#282334;background:#f8f5f9}body{margin:0}header{background:#45266c;color:white;padding:22px max(22px,5vw)}header span{color:#cde1d0}main{max-width:1100px;margin:40px auto;padding:0 24px}h1{font-size:32px}h2{font-size:19px}.card{background:white;border:1px solid #ddd5e4;padding:24px;margin:20px 0}.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}.stats strong{display:block;font-size:32px;color:#45266c}.muted{color:#655d6b}label{display:block;margin:18px 0 7px}input{padding:12px;width:min(400px,90%);border:1px solid #a99bb2;font:inherit}button{background:#45266c;color:white;padding:12px 20px;border:0;font:inherit;font-weight:700;cursor:pointer}table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;border-bottom:1px solid #e8e1ec;padding:12px 9px;vertical-align:top}th{color:#45266c}code{overflow-wrap:anywhere}.scroll{overflow-x:auto}.notice{border-left:4px solid #487a52;padding:12px 16px;background:#ebf2eb}@media(max-width:640px){.stats{grid-template-columns:1fr}}
   </style></head><body><header><strong>E FACTOR <span>LEADERSHIP</span></strong> · Error monitor</header><main>${content}</main></body></html>`
 }
-function login(error = '') { return page(`<h1>Admin sign in</h1><p class="muted">Enter the admin password configured in Railway.</p>${error ? `<p class="notice">${escape(error)}</p>` : ''}<section class="card"><form method="post" action="/admin/login"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required><p><button type="submit">Sign in</button></p></form></section>`) }
+function login(error = '', admin = false) {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Sign in | Interview Design Studio | E Factor Leadership</title><link rel="icon" href="/favicon.svg"><style>
+  *{box-sizing:border-box}body{margin:0;background:#f8f5f9;color:#282334;font-family:Arial,sans-serif;line-height:1.6}header{padding:24px 6vw;border-bottom:1px solid #e3dce8;display:flex;align-items:center;gap:18px;background:white}header img{width:76px;height:76px;object-fit:contain}header strong{display:block;font-size:18px}header span{color:#655d6b;font-size:14px}main{max-width:520px;margin:56px auto;padding:0 24px}.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#74617f}h1{font-size:34px;line-height:1.2;margin:14px 0}p{color:#655d6b}.card{margin:28px 0;background:white;border:1px solid #ddd5e4;border-radius:10px;padding:28px}label{display:block;font-weight:600;margin-bottom:8px}input{width:100%;font:inherit;padding:12px;border:1px solid #a99bb2;border-radius:4px}input:focus{outline:2px solid #74617f;outline-offset:2px}button{width:100%;font:inherit;font-weight:600;background:#45266c;color:white;border:0;border-radius:4px;padding:13px;margin-top:22px;cursor:pointer}a{color:#45266c;text-underline-offset:3px}.notice{background:#fff2ee;border-left:4px solid #9d442f;padding:12px;color:#653224}.small{font-size:13px}.back{display:block;text-align:center}@media(max-width:520px){main{margin:32px auto}header{padding:16px 24px}.card{padding:22px}h1{font-size:30px}}
+  </style></head><body><header><img src="/efactor-logo.png" alt="E Factor Leadership"><div><strong>Interview Design Studio</strong><span>By E Factor Leadership</span></div></header><main><div class="eyebrow">${admin ? 'Administrator access' : 'Workspace access'}</div><h1>Sign in to your workspace.</h1><p>${admin ? 'Use your administrator password to open the application error monitor.' : 'Sign in to use AI drafting for your interview kits.'}</p>${error ? `<p class="notice" role="alert">${escape(error)}</p>` : ''}<section class="card"><form method="post" action="${admin ? '/admin/login' : '/sign-in'}"><label for="password">Workspace password</label><input id="password" name="password" type="password" autocomplete="current-password" required aria-describedby="password-help"><p class="small" id="password-help">Use the password provided for this E Factor Leadership tool. Your email or Railway account password will not work here.</p><button type="submit">${admin ? 'Sign in to administration' : 'Sign in and return to the tool'}</button></form></section><a class="back" href="/">Return to Interview Design Studio</a><p class="small">This tool is operated by E Factor Leadership and hosted on Railway. Your interview setup is saved in this browser. If you need access, contact the person who provided the tool.</p></main></body></html>`
+}
 async function dashboard() {
   const { mode, events, counts } = await getErrorSummary()
   const rows = events.map(e => `<tr><td>${escape(new Date(e.last_seen).toLocaleString('en-US', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' }))} UTC</td><td>${escape(e.source)} / ${escape(e.category)}</td><td>${escape(e.kind)}</td><td><code>${escape(e.asset || '—')}${e.line ? ':' + Number(e.line) : ''}</code></td><td>${Number(e.occurrences)}</td></tr>`).join('')
@@ -69,7 +73,7 @@ createServer(async (req, res) => {
     if (path === '/api/health' && req.method === 'GET') return send(res, 200, JSON.stringify({ ok: true }), { 'content-type': 'application/json', 'cache-control': 'no-store' })
     if (path === '/api/ai/draft' && req.method === 'POST') {
       const json = { 'content-type': 'application/json', 'cache-control': 'no-store' }
-      if (!validSession(req) || !password) return send(res, 401, JSON.stringify({ error: 'Sign in at /admin to use AI drafting.' }), json)
+      if (!validSession(req) || !password) return send(res, 401, JSON.stringify({ error: 'Sign in at /sign-in to use AI drafting.' }), json)
       if (!process.env.OPENAI_API_KEY) return send(res, 503, JSON.stringify({ error: 'Add OPENAI_API_KEY to the Railway app variables.' }), json)
       if (!originOkay(req)) return send(res, 403)
       if (!rate(`ai:${req.socket.remoteAddress}`, 10)) return send(res, 429, JSON.stringify({ error: 'AI drafting limit reached. Try again in an hour.' }), json)
@@ -95,18 +99,25 @@ createServer(async (req, res) => {
     if (path === '/admin' && req.method === 'GET') {
       if (!password) return send(res, 503, page('<h1>Admin access is not configured</h1><p>Set ADMIN_PASSWORD in the Railway app service variables to enable this panel.</p>'), adminHeaders)
       const authorized = validSession(req)
-      return send(res, authorized ? 200 : 401, authorized ? await dashboard() : login(), adminHeaders)
+      return send(res, authorized ? 200 : 401, authorized ? await dashboard() : login('', true), adminHeaders)
     }
-    if (path === '/admin/login' && req.method === 'POST') {
+    if ((path === '/sign-in' || path === '/admin/login') && req.method === 'GET') {
+      if (path === '/admin/login') return send(res, 303, '', { ...adminHeaders, location: '/sign-in' })
+      if (!password) return send(res, 503, login('Workspace access has not been configured yet. Contact the tool administrator.'), adminHeaders)
+      if (validSession(req)) return send(res, 303, '', { ...adminHeaders, location: '/' })
+      return send(res, 200, login(), adminHeaders)
+    }
+    if ((path === '/admin/login' || path === '/sign-in') && req.method === 'POST') {
+      const admin = path === '/admin/login'
       if (!password) return send(res, 503)
-      if (!originOkay(req)) return send(res, 403, login('Please open the admin page and try again.'), adminHeaders)
+      if (!originOkay(req)) return send(res, 403, login('Your sign-in request could not be verified. Open the sign-in page again, then retry.', admin), adminHeaders)
       let input
       try { input = new URLSearchParams(await body(req)).get('password') || '' } catch { return send(res, 400) }
       if (!equal(input, password)) {
         const allowed = rate(`login:${req.socket.remoteAddress}`, 10)
-        return send(res, allowed ? 401 : 429, login(allowed ? 'The password did not match.' : 'Too many unsuccessful attempts. Wait a minute, then try again.'), { ...adminHeaders, ...(allowed ? {} : { 'retry-after': '60' }) })
+        return send(res, allowed ? 401 : 429, login(allowed ? 'The password did not match. Use your workspace password and try again.' : 'Too many unsuccessful attempts. Wait a minute, then try again.', admin), { ...adminHeaders, ...(allowed ? {} : { 'retry-after': '60' }) })
       }
-      return send(res, 303, '', { ...adminHeaders, location: '/admin', 'set-cookie': cookie(req) })
+      return send(res, 303, '', { ...adminHeaders, location: admin ? '/admin' : '/', 'set-cookie': cookie(req) })
     }
     if (path === '/admin/logout' && req.method === 'POST') {
       if (!originOkay(req)) return send(res, 403)

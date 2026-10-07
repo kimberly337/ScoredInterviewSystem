@@ -253,7 +253,7 @@ function App() {
         <button className="secondary" aria-expanded={bankOpen} aria-controls="competency-bank" onClick={() => setBankOpen(open => !open)}>{bankOpen ? 'Hide competency bank' : 'Browse competency bank'}</button>
         <button className="link" onClick={() => change({ competencies:[...d.competencies,{id:uid(),name:'',source:'Added by company',evidence:'',stageId:'',included:true}] })}>+ Add your own</button>
       </div>
-      <p className="reference-tip">AI drafting sends the role description, company values, and hiring steps to OpenAI when you click. Use sample company details in this prototype. <a href="/admin" target="_blank" rel="noreferrer">Admin sign in</a> is required.</p>
+      <p className="reference-tip">AI drafting sends the role description, company values, and hiring steps to OpenAI when you click. Use sample company details in this prototype. <a href="/sign-in">Workspace sign in</a> is required.</p>
       {bankOpen && <section className="bank-panel" id="competency-bank" aria-label="Competency bank">
         <div className="section-head"><div><h2>Competency bank</h2><p>Choose behaviors that matter for this role. Each one is a starting point you can edit.</p></div></div>
         <label>Search competencies<input type="search" value={bankQuery} placeholder="Try judgment, documentation, or coaching" onChange={e => setBankQuery(e.target.value)}/></label>
