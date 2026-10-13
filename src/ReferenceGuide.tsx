@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import BackgroundQuestions from './BackgroundQuestions'
+import RequirementRating from './RequirementRating'
 import type { BackgroundItem } from './questionPlanning'
 
 type ReferenceItem = { id: string; competencyId: string; question: string; probe: string }
@@ -21,9 +22,9 @@ export default function ReferenceGuide({ stage, index, items, backgroundItems, o
   const detail = (key: string, label: string) => <label>{label}<input value={details[key] || ''} onChange={e => setDetails(old => ({ ...old, [key]: e.target.value }))}/><span className="print-field print-notes">{details[key] || ' '}</span></label>
   return <section className="kit-stage reference-guide">
     <div className="stage-title"><div className="eyebrow">STEP {String(index + 1).padStart(2, '0')}</div><h2>{stage.name}</h2><p>{stage.owner} · {stage.method}</p><p>{stage.purpose}</p><p><strong>{items.length + backgroundItems.length} core questions</strong> · {items.length} competency questions · {backgroundItems.length} background questions</p></div>
-    <div className="reference-instructions"><strong>One sheet per reference</strong><p>Confirm the candidate has authorized this contact. Ask the same core questions for each candidate and record examples in the reference’s own words. If the reference cannot speak to a behavior, mark “Not observed.” Review specific concerns with the candidate before deciding.</p></div>
+    <div className="reference-instructions"><strong>One sheet per reference</strong><p>Confirm the candidate has authorized this contact. Ask the same core questions for each candidate and record examples in the reference’s own words. Assess answers against the stated role requirements and record supporting examples. If the reference cannot speak to a requirement, mark “Insufficient evidence”; for a numeric behavior rating, use “Not observed.” Review specific concerns with the candidate before deciding.</p></div>
     <div className="columns reference-details">{detail('candidate','Candidate')}{detail('reference','Reference name')}{detail('relationship','Working relationship')}{detail('organization','Organization / role')}{detail('period','Period worked together')}{detail('date','Date and checker')}{detail('permission','Permission to contact confirmed by')}</div>
-    <BackgroundQuestions items={backgroundItems} onEdit={onEditBackground}/><h3>Selected competency evidence</h3>
+    <BackgroundQuestions items={backgroundItems} onEdit={onEditBackground}/>{items.length > 0 && <h3>Selected competency evidence</h3>}
     {items.map(item => {
       const competency = competencies.find(c => c.id === item.competencyId)
       if (!competency) return null
@@ -32,10 +33,11 @@ export default function ReferenceGuide({ stage, index, items, backgroundItems, o
         <label>Core question<textarea value={item.question} onChange={e => onEdit(item.id, { question: e.target.value })}/><span className="print-field">{item.question}</span></label>
         <label>Follow-up prompts<input value={item.probe} onChange={e => onEdit(item.id, { probe: e.target.value })}/><span className="print-field">{item.probe}</span></label>
         <p className="reference-anchor"><strong>Behavior to verify:</strong> {competency.evidence}</p>
-        <div className="score"><label>Specific example / evidence notes<textarea value={notes[item.id] || ''} onChange={e => setNotes(old => ({ ...old, [item.id]: e.target.value }))} placeholder="What did the reference directly observe?"/><span className="print-field print-notes">{notes[item.id] || ' '}</span></label><label>Evidence rating<select value={ratings[item.id] || ''} onChange={e => setRatings(old => ({ ...old, [item.id]: e.target.value }))}><option value="">Not rated</option><option>Not observed</option>{[1,2,3,4,5].map(n=><option key={n}>{n}</option>)}</select><span className="print-field">{ratings[item.id] || 'Not rated'}</span></label></div>
+        <div className="score"><label>Specific example / evidence notes<textarea value={notes[item.id] || ''} onChange={e => setNotes(old => ({ ...old, [item.id]: e.target.value }))} placeholder="Which role requirement does this address, and what did the reference directly observe?"/><span className="print-field print-notes">{notes[item.id] || ' '}</span></label><label>Evidence rating<select value={ratings[item.id] || ''} onChange={e => setRatings(old => ({ ...old, [item.id]: e.target.value }))}><option value="">Not rated</option><option>Not observed</option>{[1,2,3,4,5].map(n=><option key={n}>{n}</option>)}</select><span className="print-field">{ratings[item.id] || 'Not rated'}</span></label></div>
+        <RequirementRating/>
       </article>
     })}
-    <p className="reference-scale"><strong>Rating guide:</strong> 1 = example worked against the behavior · 3 = specific example meets the behavior · 5 = detailed, repeated evidence exceeds it. Use 2 or 4 between anchors. “Not observed” is missing evidence, not a low score.</p>
+    {items.length > 0 && <p className="reference-scale"><strong>Behavior rating guide:</strong> 1 = example worked against the behavior · 3 = specific example meets the behavior · 5 = detailed, repeated evidence exceeds it. Use 2 or 4 between anchors. “Not observed” is missing evidence, not a low score.</p>}
     <label>Other job-related facts or concerns to follow up<textarea value={details.summary || ''} onChange={e=>setDetails(old=>({...old,summary:e.target.value}))}/><span className="print-field print-notes">{details.summary || ' '}</span></label>
     <p className="decision"><strong>Decision point:</strong> {stage.advance || 'Review alongside interview evidence. Do not make an automatic decision from this sheet.'}</p>
   </section>
