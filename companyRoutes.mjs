@@ -9,11 +9,11 @@ function accountPage(title, content) {
 const htmlHeaders = { 'content-type':'text/html; charset=utf-8','cache-control':'no-store','referrer-policy':'same-origin','content-security-policy':"default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'" }
 const signIn = error => accountPage('Company sign in', `<p>Sign in with your own email and company workspace password.</p>${error ? `<p role="alert" class="notice">${esc(error)}</p>` : ''}<form class="card" method="post" action="/company/sign-in"><label>Email<input name="email" type="email" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required maxlength="256"></label><button>Sign in</button></form><p>Invitation-only pilot. Ask your company administrator for access or password recovery.</p>`)
 const activate = (token, error) => accountPage('Activate your company account', `<p>Your invitation identifies your company and email. Choose your own password, at least 12 characters.</p>${error ? `<p role="alert" class="notice">${esc(error)}</p>` : ''}<form class="card" method="post" action="/company/activate"><input name="token" type="hidden" value="${esc(token)}"><label>New password<input name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="256"></label><label>Confirm password<input name="confirm" type="password" autocomplete="new-password" required minlength="12" maxlength="256"></label><button>Activate account</button></form>`)
-export async function companyRoutes(req, res, path, { send, body, originOkay, rate, validSession, store = defaultStore, enabled = companiesEnabled }) {
+export async function companyRoutes(req, res, path, { send, body, originOkay, rate, validSession, store = defaultStore, enabled = companiesEnabled, candidateReady = process.env.WORKSPACE_PILOT_READY === 'true' }) {
  const relevant = path.startsWith('/api/company/') || path.startsWith('/company/') || path === '/admin/companies'
  if (!relevant) return false
  const reply = (status, payload, headers = jsonHeaders) => { send(res,status,typeof payload === 'object' ? JSON.stringify(payload) : payload,headers); return true }
- if (path === '/api/company/status' && req.method === 'GET') return reply(200,{enabled,configured:store.available})
+ if (path === '/api/company/status' && req.method === 'GET') return reply(200,{enabled,configured:store.available,candidateReady})
  if (!enabled || !store.available) return reply(503,path.startsWith('/api/') ? {error:'Company accounts need database and encryption configuration before use.'} : accountPage('Company workspaces are being prepared','<p>Company accounts are not enabled yet. Candidate information cannot be saved until setup is complete.</p>'),path.startsWith('/api/') ? jsonHeaders : htmlHeaders)
  try {
   await store.init()
@@ -69,15 +69,18 @@ export async function companyRoutes(req, res, path, { send, body, originOkay, ra
   if (path === '/api/company/disable' && req.method === 'POST') { const input=JSON.parse(await body(req,4096)); await store.disable(user,input.id); return reply(200,{ok:true}) }
   if (path === '/api/company/records' && req.method === 'GET') {
    const params = new URL(req.url,'http://localhost').searchParams, kind = params.get('kind')
+   if (kind === 'candidate' && !candidateReady) return reply(503,{error:'Candidate records are not enabled yet. Backup setup and recovery verification are still required.'})
    if (!['kit','candidate'].includes(kind)) return reply(400,{error:'Invalid record type.'})
    return reply(200,{records:await store.list(user,kind,params.get('archived') === 'true')})
   }
   if (path === '/api/company/records' && req.method === 'POST') {
    if (!String(req.headers['content-type']).startsWith('application/json')) return reply(415,{error:'JSON required.'})
-   return reply(200,{record:await store.save(user,JSON.parse(await body(req,512000)))})
+   const input = JSON.parse(await body(req,512000))
+   if(input.kind === 'candidate' && !candidateReady) return reply(503,{error:'Candidate records are not enabled yet. Backup setup and recovery verification are still required.'})
+   return reply(200,{record:await store.save(user,input)})
   }
   const match = path.match(/^\/api\/company\/records\/([a-f0-9-]{36})(?:\/(archive|restore))?$/)
-  if (match && req.method === 'GET' && !match[2]) return reply(200,{record:await store.get(user,match[1])})
+  if (match && req.method === 'GET' && !match[2]) { const record=await store.get(user,match[1]); if(record.kind==='candidate' && !candidateReady) return reply(503,{error:'Candidate records are not enabled yet.'}); return reply(200,{record}) }
   if (match && req.method === 'POST' && match[2]) { await store.archive(user,match[1],match[2] === 'restore'); return reply(200,{ok:true}) }
   return reply(404,{error:'Not found.'})
  } catch(error) {
