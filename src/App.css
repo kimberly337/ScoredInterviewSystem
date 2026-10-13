@@ -152,3 +152,7 @@ input:focus,textarea:focus,select:focus{border-color:var(--purple);box-shadow:0 
   .reference-guide .reference-scale{font-size:10px;line-height:1.4;padding:9px 12px;break-inside:avoid}
   .reference-guide>.print-field{min-height:22px}
 }
+
+.account-gate{max-width:640px;margin:10vh auto;padding:24px}.account-gate img{width:100px}.account-gate .primary{display:inline-block;text-decoration:none}.company-toolbar{border:1px solid var(--line);padding:18px;margin-bottom:24px;background:#faf7fc}.company-toolbar>div:first-child{display:flex;gap:20px;justify-content:space-between;flex-wrap:wrap}.company-toolbar span{font-size:12px}.company-toolbar .actions{margin:16px 0;gap:8px}.company-toolbar .actions label{flex:1 1 200px;margin:0}.company-toolbar p,.save-status{font-size:12px;line-height:1.6}.save-status.dirty{background:#fff2cf;padding:14px}.reference-record{border-top:2px solid var(--line);margin-top:28px;padding-top:16px}.candidate-scorecard .print-brand{display:none}@media print{.candidate-scorecard .print-brand{display:flex}.candidate-scorecard .reference-record+.reference-record{page-break-before:always;break-before:page}.candidate-scorecard .columns{break-inside:avoid}.candidate-scorecard h2{break-after:avoid}}
+
+.candidate-page>.eyebrow{display:none}

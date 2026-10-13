@@ -1,7 +1,7 @@
 import { Component, StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App.tsx'
+import WorkspaceGate from './WorkspaceGate'
 import { reportError } from './errorReporting.ts'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -10,7 +10,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean
   componentDidCatch(error: Error) { reportError('render_error', error) }
   render() {
     return this.state.failed
-      ? <main style={{ maxWidth: 560, margin: '12vh auto', padding: 24 }}><h1>Something went wrong.</h1><p>We recorded a technical error. Reload the page to try again. Your draft is saved in this browser.</p></main>
+      ? <main style={{ maxWidth: 560, margin: '12vh auto', padding: 24 }}><h1>Something went wrong.</h1><p>We recorded a technical error. Reload the page to try again. Reopen your last saved record. Unsaved changes may need to be entered again.</p></main>
       : this.props.children
   }
 }
@@ -20,6 +20,6 @@ window.addEventListener('unhandledrejection', event => reportError('unhandled_re
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ErrorBoundary><App /></ErrorBoundary>
+    <ErrorBoundary><WorkspaceGate /></ErrorBoundary>
   </StrictMode>,
 )
