@@ -1,6 +1,17 @@
 const textField = (value, max = 12000) => typeof value === 'string' ? value.slice(0, max) : ''
 const objectSchema = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false })
 const string = { type: 'string' }
+const aiError = name => Object.assign(new Error(name), { name })
+export const aiFailureMessage = error => ({
+  AIAuthenticationError: 'The AI connection needs a valid OpenAI API key. Your current draft is safe.',
+  AIQuotaError: 'The OpenAI API account has reached its billing or usage limit. Check API billing and project limits. Your current draft is safe.',
+  AIRateLimitError: 'OpenAI is temporarily rate-limiting requests. Wait a minute before retrying. Your current draft is safe.',
+  AIPermissionError: 'The OpenAI API project does not allow this request. Check model and project permissions. Your current draft is safe.',
+  AIRequestError: 'OpenAI rejected the drafting request. The application configuration needs review. Your current draft is safe.',
+  AITimeoutError: 'AI drafting timed out. Your current draft is safe. Try again later.',
+  AIInvalidResponse: 'The AI response could not be validated. Your current draft is safe. Try again later.',
+  AIEmptyResponse: 'The AI did not return a usable draft. Your current draft is safe. Try again later.',
+}[error?.name] || 'AI drafting is unavailable right now. Your current draft is safe.')
 
 export async function draftWithAI(input, fetcher = fetch) {
   const mode = input?.mode
@@ -33,13 +44,25 @@ export async function draftWithAI(input, fetcher = fetch) {
         text: { format: { type: 'json_schema', name: `interview_${mode}`, strict: true, schema: objectSchema(fields) } },
       }),
     })
+  } catch (error) {
+    throw aiError(error?.name === 'AbortError' ? 'AITimeoutError' : 'AINetworkError')
   } finally { clearTimeout(timeout) }
-  if (!response.ok) throw new Error('AIProviderError')
+  if (!response.ok) {
+    // Read only the provider's error code. Never retain its message, which can
+    // contain request data or credential fragments.
+    const failure = await response.json().catch(() => ({}))
+    const code = failure?.error?.code
+    const name = response.status === 401 ? 'AIAuthenticationError'
+      : response.status === 429 ? (['insufficient_quota', 'billing_hard_limit_reached'].includes(code) ? 'AIQuotaError' : 'AIRateLimitError')
+      : response.status === 403 || response.status === 404 ? 'AIPermissionError'
+      : response.status === 400 ? 'AIRequestError' : 'AIProviderError'
+    throw aiError(name)
+  }
   const result = await response.json()
   const output = result.output?.flatMap(entry => entry.content || []).find(part => part.type === 'output_text')?.text
-  if (!output) throw new Error('AIEmptyResponse')
+  if (!output) throw aiError('AIEmptyResponse')
   let parsed
-  try { parsed = JSON.parse(output) } catch { throw new Error('AIInvalidResponse') }
+  try { parsed = JSON.parse(output) } catch { throw aiError('AIInvalidResponse') }
   const list = parsed[mode === 'suggest' ? 'suggestions' : 'items']
   if (!Array.isArray(list) || list.length > (mode === 'tailor' ? 48 : 16) || !list.length) throw new Error('AIInvalidResponse')
   if (mode === 'suggest') {

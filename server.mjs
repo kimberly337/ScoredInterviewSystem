@@ -4,7 +4,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { extname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getErrorSummary, recordError, closeStore } from './errorStore.mjs'
-import { draftWithAI } from './aiDraft.mjs'
+import { draftWithAI, aiFailureMessage } from './aiDraft.mjs'
 
 const root = resolve(fileURLToPath(new URL('./dist/', import.meta.url)))
 const password = process.env.ADMIN_PASSWORD || ''
@@ -84,7 +84,7 @@ createServer(async (req, res) => {
       } catch (error) {
         const invalid = ['InvalidDraftRequest', 'MissingRoleDetails', 'MissingAssignedCompetencies'].includes(error?.message)
         if (!invalid) await recordError({ source: 'server', category: 'ai_draft_failure', kind: error?.name || 'Error', asset: '', line: 0, column: 0 })
-        return send(res, invalid ? 400 : 502, JSON.stringify({ error: invalid ? 'Add a role description and assign competencies to steps first.' : 'AI drafting is unavailable right now. Your current draft is safe.' }), json)
+        return send(res, invalid ? 400 : 502, JSON.stringify({ error: invalid ? 'Add a role description and assign competencies to steps first.' : aiFailureMessage(error) }), json)
       }
     }
     if (path === '/api/errors' && req.method === 'POST') {
