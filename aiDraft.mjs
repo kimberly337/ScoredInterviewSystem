@@ -53,7 +53,7 @@ export async function draftWithAI(input, fetcher = fetch) {
     const failure = await response.json().catch(() => ({}))
     const code = failure?.error?.code
     const name = response.status === 401 ? 'AIAuthenticationError'
-      : response.status === 429 ? (['insufficient_quota', 'billing_hard_limit_reached'].includes(code) ? 'AIQuotaError' : 'AIRateLimitError')
+      : response.status === 429 ? (failure?.error?.type === 'insufficient_quota' || ['insufficient_quota', 'billing_hard_limit_reached', 'credit_balance_exhausted', 'organization_spend_limit_exceeded', 'project_spend_limit_exceeded', 'organization_usage_limit_exceeded'].includes(code) ? 'AIQuotaError' : 'AIRateLimitError')
       : response.status === 403 || response.status === 404 ? 'AIPermissionError'
       : response.status === 400 ? 'AIRequestError' : 'AIProviderError'
     throw aiError(name)
