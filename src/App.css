@@ -123,7 +123,7 @@ input:focus,textarea:focus,select:focus{border-color:var(--purple);box-shadow:0 
   .guide h2{font-size:16px;margin-bottom:6px}
   .guide p{font-size:10px;line-height:1.45;margin:5px 0}
   .guide .eyebrow{font-size:9px;margin-bottom:5px}
-  .kit-stage{break-before:auto;margin:16px 0 20px}
+  .kit-stage{page-break-before:always;break-before:page;margin:0 0 20px}
   .stage-title{break-after:avoid;margin:0 0 9px;padding-bottom:7px}
   .stage-title .eyebrow{font-size:9px;margin-bottom:5px}
   .stage-title h2{font-size:18px;margin-bottom:5px}
