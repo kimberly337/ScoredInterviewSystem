@@ -1,3 +1,5 @@
+import { companyRoutes, companySession } from './companyRoutes.mjs'
+import { closeCompanies } from './companyStore.mjs'
 import { createServer } from 'node:http'
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
@@ -65,18 +67,20 @@ function login(error = '', admin = false) {
 async function dashboard() {
   const { mode, events, counts } = await getErrorSummary()
   const rows = events.map(e => `<tr><td>${escape(new Date(e.last_seen).toLocaleString('en-US', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' }))} UTC</td><td>${escape(e.source)} / ${escape(e.category)}</td><td>${escape(e.kind)}</td><td><code>${escape(e.asset || '—')}${e.line ? ':' + Number(e.line) : ''}</code></td><td>${Number(e.occurrences)}</td></tr>`).join('')
-  return page(`<h1>Application errors</h1><p class="muted">Updates every 30 seconds. Reports contain error types and code locations only. They do not contain job descriptions, form entries, candidate details, messages, or stacks.</p>${mode === 'memory' ? '<p class="notice">Temporary view: no database connection. Events disappear when the server restarts; Railway logs still record error codes.</p>' : '<p class="notice">Persistent storage connected. Error groups are kept for 90 days after the latest occurrence.</p>'}<div class="stats"><section class="card"><strong>${Number(counts.last_day)}</strong>Groups active in 24 hours</section><section class="card"><strong>${Number(counts.distinct_errors)}</strong>Distinct error groups</section><section class="card"><strong>${Number(counts.total_occurrences)}</strong>Total occurrences</section></div><section class="card"><h2>Recent error groups</h2><div class="scroll"><table><thead><tr><th>Last seen</th><th>Source / category</th><th>Type</th><th>Code location</th><th>Count</th></tr></thead><tbody>${rows || '<tr><td colspan="5">No errors recorded yet.</td></tr>'}</tbody></table></div></section><form method="post" action="/admin/logout"><button type="submit">Sign out</button></form>`, true)
+  return page(`<p><a href="/admin/companies">Manage company accounts</a></p><h1>Application errors</h1><p class="muted">Updates every 30 seconds. Reports contain error types and code locations only. They do not contain job descriptions, form entries, candidate details, messages, or stacks.</p>${mode === 'memory' ? '<p class="notice">Temporary view: no database connection. Events disappear when the server restarts; Railway logs still record error codes.</p>' : '<p class="notice">Persistent storage connected. Error groups are kept for 90 days after the latest occurrence.</p>'}<div class="stats"><section class="card"><strong>${Number(counts.last_day)}</strong>Groups active in 24 hours</section><section class="card"><strong>${Number(counts.distinct_errors)}</strong>Distinct error groups</section><section class="card"><strong>${Number(counts.total_occurrences)}</strong>Total occurrences</section></div><section class="card"><h2>Recent error groups</h2><div class="scroll"><table><thead><tr><th>Last seen</th><th>Source / category</th><th>Type</th><th>Code location</th><th>Count</th></tr></thead><tbody>${rows || '<tr><td colspan="5">No errors recorded yet.</td></tr>'}</tbody></table></div></section><form method="post" action="/admin/logout"><button type="submit">Sign out</button></form>`, true)
 }
 createServer(async (req, res) => {
   try {
     const path = decodeURIComponent(new URL(req.url, 'http://localhost').pathname)
+    if (await companyRoutes(req, res, path, { send, body, originOkay, rate, validSession })) return
     if (path === '/api/health' && req.method === 'GET') return send(res, 200, JSON.stringify({ ok: true }), { 'content-type': 'application/json', 'cache-control': 'no-store' })
     if (path === '/api/ai/draft' && req.method === 'POST') {
       const json = { 'content-type': 'application/json', 'cache-control': 'no-store' }
-      if (!validSession(req) || !password) return send(res, 401, JSON.stringify({ error: 'Sign in at /sign-in to use AI drafting.' }), json)
+      const companyUser = await companySession(req)
+      if (!companyUser && (!validSession(req) || !password)) return send(res, 401, JSON.stringify({ error: 'Sign in at /sign-in to use AI drafting.' }), json)
       if (!process.env.OPENAI_API_KEY) return send(res, 503, JSON.stringify({ error: 'Add OPENAI_API_KEY to the Railway app variables.' }), json)
       if (!originOkay(req)) return send(res, 403)
-      if (!rate(`ai:${req.socket.remoteAddress}`, 10)) return send(res, 429, JSON.stringify({ error: 'AI drafting limit reached. Try again in an hour.' }), json)
+      if (!rate(`ai:${companyUser?.company_id || req.socket.remoteAddress}`, 10)) return send(res, 429, JSON.stringify({ error: 'AI drafting limit reached. Try again in an hour.' }), json)
       if (!String(req.headers['content-type']).startsWith('application/json')) return send(res, 415)
       try {
         const result = await draftWithAI(JSON.parse(await body(req, 24000)))
@@ -137,4 +141,4 @@ createServer(async (req, res) => {
   }
 }).listen(Number(process.env.PORT || 3000), '0.0.0.0', () => console.log(`Interview studio listening on ${process.env.PORT || 3000}`))
 process.on('unhandledRejection', error => { void recordError({ source: 'server', category: 'unhandled_rejection', kind: error?.name || 'Error', asset: '', line: 0, column: 0 }) })
-process.on('SIGTERM', () => { void closeStore().finally(() => process.exit(0)) })
+process.on('SIGTERM', () => { void Promise.all([closeStore(), closeCompanies()]).finally(() => process.exit(0)) })
